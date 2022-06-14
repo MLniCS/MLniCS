@@ -1,19 +1,23 @@
 """
 TO DO:
 
-1. Validation set code
 2. Model training checkpoints (and also save current loss & validation loss
     so that we can choose the checkpoint based on validation)
         There is possibly more information we want to save than we are currently saving.
-
-3. reduced_problem.project has an argument called "on_dirichlet_bc=False". What to do with this?
-4. Maybe remove all of the mu_old stuff because the other fields of the problem aren't also being saved
-    and may also change.
+        We probably want to save the training set/training indices (and validation)
 
 5. When reduction method is ReducedBasis, we currently aren't using a lot of training data
     (just the mu's from mu greedy which is very few-->high error on validation)
-6. I think in PDNN Loss we need to normalize the output at each calculation of the loss
-    because otherwise PRNN Loss won't work (PINN doesn't normalize output, PDNN does)
+   Make it possible to use different training data for PDNN and PINN.
+
+6. Make output normalization consistent between the types of loss functions.
+
+7. Make error analysis by network into a better table like this (maybe use a new data structure):
+                     Mean Relative Error
+            NN-HF           NN-RO       RO-HF
+    PINN
+    PDNN
+    PRNN
 """
 
 import torch
@@ -28,6 +32,7 @@ from rbnics.backends.dolfin.evaluate import evaluate
 from rbnics.utils.io.online_size_dict import OnlineSizeDict
 import matplotlib.pyplot as plt
 from mlnics.Normalization import IdentityNormalization
+from mlnics.Losses import reinitialize_loss
 import sys
 
 
@@ -88,7 +93,7 @@ class RONN(nn.Module):
 
             # make time a new parameter in the model
             self.num_params += 1
-            self.time_augmented_mu = self.time_augment_parameter(self.mu)
+            self.time_augmented_mu = self.augment_parameters_with_time(self.mu)
 
             self.num_snapshots = self.time_augmented_mu.shape[0]
 
@@ -105,6 +110,9 @@ class RONN(nn.Module):
 
         self.activation = activation
 
+        self.train_idx = None
+        self.validation_idx = None
+
     def forward(self, mu):
         """
         Map parameter mu --> reduced order coefficient
@@ -116,8 +124,9 @@ class RONN(nn.Module):
         res = self.layers[-1](res)
         return res
 
-    """ perhaps change name to 'augment_parameters_with_time' """
-    def time_augment_parameter(self, mu):
+    def augment_parameters_with_time(self, mu):
+        if not self.time_dependent:
+            return mu
         new_mu = torch.zeros((mu.shape[0]*self.num_times, self.num_params))
         for i in range(mu.shape[0]):
             for j in range(self.num_times):
@@ -160,9 +169,9 @@ class RONN(nn.Module):
     def get_inner_product_matrix(self):
         return torch.tensor(np.array(self.reduced_problem._combine_all_inner_products()))
 
-    def get_operator_matrices(self):
-        mu_old = self.problem.mu
-        mu = self.mu if not self.time_dependent else self.time_augmented_mu
+    def get_operator_matrices(self, mu=None):
+        if mu is None:
+            mu = self.mu if not self.time_dependent else self.time_augmented_mu
 
         operator_dict = dict()
 
@@ -214,8 +223,6 @@ class RONN(nn.Module):
             else:
                 print(f"Operator '{term}' not implemented. Continuing without operator '{term}'...")
 
-        self.problem.set_mu(mu_old)
-
         return operator_dict
 
     """ make this work more like rbnics solve function for consistency """
@@ -231,7 +238,7 @@ class RONN(nn.Module):
         if self.time_dependent:
             # create time series
             TS = TimeSeries((self.T0, self.Tf), self.dt)
-            mu_t = self.time_augment_parameter(mu.view(1, -1))
+            mu_t = self.augment_parameters_with_time(mu.view(1, -1))
             for i, t in enumerate(np.linspace(self.T0, self.Tf, self.num_times)):
                 net_output = self.forward(input_normalization(mu_t[i], axis=0)).view(-1, 1).double()
                 OV = OnlineVector(self.component_counts)
@@ -263,62 +270,47 @@ def get_test(ronn):
     Returns: torch.tensor
     """
     mu = torch.tensor(ronn.reduction_method.testing_set)
-    #if ronn.time_dependent:
-    #    mu = ronn.time_augment_parameter(mu)
     return mu
 
-def get_test_validation(ronn, validation_proportion=0.2):
-    """
-    Returns: torch.tensor, torch.tensor/None
-    The second return value is None if and only if the number of validation examples is 0
-    """
-    test_set = get_test(ronn)
-    num_validation = int(test_set.shape[0]*validation_proportion)
-    if num_validation == 0:
-        return test_set, None
-    else:
-        perm = torch.randperm(test_set.shape[0])
-        validation_idx = perm[:num_validation]
-        test_idx = perm[num_validation:]
-        test, validation = test_set[test_idx], test_set[validation_idx]
-        return test, validation
 
-"""
-Functions for training and testing
-"""
-
-""" perhaps we want to require input_normalization and make a new function 'train' without any option for input normalization """
-def normalize_and_train(ronn, loss_fn, input_normalization=None, optimizer=torch.optim.Adam,
-                        epochs=10000, lr=1e-3, validation_set=None, print_every=100, folder='./model_checkpoints'):
+def normalize_and_train(ronn, data, loss_fn, input_normalization=None, optimizer=torch.optim.Adam,
+                        epochs=10000, lr=1e-3, print_every=100, folder='./model_checkpoints/', use_validation=True):
     """
     If input_normalization has not yet been fit, then this function fits it to the training data.
-    If not None, validation_set must not have been normalized.
-    validation_set does not contain time as a parameter.
     """
+    assert data.initialized
 
-    # set default initialization to input_normalization
+    # default initialization for input_normalization
     if input_normalization is None:
         input_normalization = IdentityNormalization()
 
-    # first call of input_normalization "trains" the normalization
-    mu = ronn.mu if not ronn.time_dependent else ronn.time_augmented_mu
-    normalized_mu = input_normalization(mu, axis=0)
+    train, validation = data.train_validation_split()
+    train_normalized = input_normalization(train, axis=0) # also initializes normalization
+    validation_normalized = input_normalization(validation, axis=0)
 
-    # compute high fidelity solutions for computing error for validation
-    if validation_set is not None:
-        assert validation_set.shape[0] > 0
-        hf_solutions = compute_reduced_solutions(ronn.reduced_problem, validation_set)
-        # normalize validation set
-        normalized_validation_set = input_normalization(validation_set, axis=0)
+    # initialize the same loss as loss_fn for validation
+    if validation is not None:
+        val_t0_idx = data.get_validation_initial_time_index()
+        train_t0_idx = data.get_train_initial_time_index()
+        assert (val_t0_idx is None and train_t0_idx is None) or ronn.time_dependent
 
+        val_snapshot_idx = data.get_validation_snapshot_index()
+        train_snapshot_idx = data.get_train_snapshot_index()
+
+        loss_fn_validation = reinitialize_loss(ronn, loss_fn, validation, val_snapshot_idx, val_t0_idx)
+
+        if not loss_fn.operators_initialized:
+            loss_fn.set_snapshot_index(train_snapshot_idx)
+            loss_fn.set_initial_time_index(train_t0_idx)
+            loss_fn.set_mu(train)
 
     ############################# Train the model #############################
     optimizer = optimizer(ronn.parameters(), lr=lr)
 
     optimizer.zero_grad()
     for e in range(epochs):
-        coeff_pred = ronn(normalized_mu)
-        loss = loss_fn(coeff_pred, normalized_mu=normalized_mu)
+        coeff_pred = ronn(train_normalized)
+        loss = loss_fn(coeff_pred, normalized_mu=train_normalized)
 
         optimizer.zero_grad()
         loss.backward()
@@ -326,35 +318,35 @@ def normalize_and_train(ronn, loss_fn, input_normalization=None, optimizer=torch
 
         if e % print_every == 0:
             ronn.eval()
-            if validation_set is not None:
-                # we also know that validation_set has nonzero size
-                pred = ronn(normalized_validation_set).detach().numpy()
-                """ There will be problems with multiple components """
-                #errors = compute_error(ronn, pred, hf_solutions)
-                #validation_loss = loss_fn(pred, normalized_mu=normalized_validation_set)
-                #print(e, loss.item(), f"\tLoss(validation) = {np.mean(errors)}")
+            if validation is not None and use_validation:
+                pred = ronn(validation_normalized)
+                validation_loss = loss_fn_validation(pred, normalized_mu=validation_normalized)
+                print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
+                """
                 torch.save({
                     'epoch': e,
                     'model_state_dict': ronn.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss.item(),
                     'validation_loss': validation_loss
-                }, folder)
+                }, folder + f"model_checkpoint_{e}")
+                """
             else:
                 print(e, loss.item())
+                """
                 torch.save({
                     'epoch': e,
                     'model_state_dict': ronn.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss.item()
-                }, folder)
+                }, folder + f"model_checkpoint_{e}")
+                """
 
             ronn.train()
 
-
     optimizer.zero_grad()
 
-
+    return loss_fn_validation
 
 
 def compute_reduced_solutions(reduced_problem, mu):
@@ -362,8 +354,6 @@ def compute_reduced_solutions(reduced_problem, mu):
     Compute the high fidelity solutions for each value of mu.
     mu: torch.tensor
     """
-    mu_old = reduced_problem.mu
-
     solutions = []
 
     if "T" in dir(reduced_problem): # time dependent
@@ -379,8 +369,6 @@ def compute_reduced_solutions(reduced_problem, mu):
             reduced_problem.solve()
             sol = np.array(reduced_problem._solution.vector()).reshape(-1, 1)
             solutions.append(sol)
-
-    reduced_problem.set_mu(mu_old)
 
     return np.array(solutions)
 
@@ -452,7 +440,7 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, euclidean=False, pri
 
     # get neural network predictions
     if ronn.time_dependent:
-        normalized_mu = input_normalization(ronn.time_augment_parameter(mu), axis=0)
+        normalized_mu = input_normalization(ronn.augment_parameters_with_time(mu), axis=0)
     else:
         normalized_mu = input_normalization(mu, axis=0)
 
@@ -511,3 +499,16 @@ def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, act
 
 
     raise NotImplementedError()
+
+
+
+"""
+Table for error analysis (perhaps need two types of tables?
+--1 for net comparison, 1 for # basis functions comparison?)
+"""
+class RONNPerformanceTable:
+    def __init__(self):
+        pass
+
+    def __str__(self):
+        pass
