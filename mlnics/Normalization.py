@@ -10,6 +10,7 @@ Normalization functions to operate on snapshot matrix
 class Normalization:
     def __init__(self):
         super(Normalization, self).__init__()
+        self.initialized = False
 
     def __call__(self, matrix, normalize=True):
         raise NotImplementedError("Calling method of abstract class Normalization")
@@ -17,6 +18,7 @@ class Normalization:
 class IdentityNormalization(Normalization):
     def __init__(self):
         super(IdentityNormalization, self).__init__()
+        self.initialized = True
 
     def __call__(self, matrix, normalize=True, axis=1):
         return matrix
@@ -29,6 +31,7 @@ class MeanNormalization(Normalization):
     def __call__(self, matrix, normalize=True, axis=1):
         if normalize:
             if self.mean is None:
+                self.initialized = True
                 self.mean = torch.mean(matrix, axis=axis, keepdims=True)
             return matrix - self.mean
         else:
@@ -43,6 +46,7 @@ class StandardNormalization(Normalization):
     def __call__(self, matrix, normalize=True, axis=1):
         if normalize:
             if self.mean is None and self.std is None:
+                self.initialized = True
                 self.mean = torch.mean(matrix, axis=axis, keepdims=True)
                 self.std = torch.std(matrix, axis=axis, keepdims=True)
                 self.std[torch.abs(self.std) <= 1e-6] = 1.

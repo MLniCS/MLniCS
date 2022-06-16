@@ -1,23 +1,21 @@
 """
 TO DO:
 
-2. Model training checkpoints (and also save current loss & validation loss
-    so that we can choose the checkpoint based on validation)
-        There is possibly more information we want to save than we are currently saving.
-        We probably want to save the training set/training indices (and validation)
-
-5. When reduction method is ReducedBasis, we currently aren't using a lot of training data
+1. When reduction method is ReducedBasis, we currently aren't using a lot of training data
     (just the mu's from mu greedy which is very few-->high error on validation)
    Make it possible to use different training data for PDNN and PINN.
 
-6. Make output normalization consistent between the types of loss functions.
+? 4. Lifting mu
 
-7. Make error analysis by network into a better table like this (maybe use a new data structure):
-                     Mean Relative Error
-            NN-HF           NN-RO       RO-HF
-    PINN
-    PDNN
-    PRNN
+6. Make loading weights in the notebooks easier/cleaner
+
+7. Save neural net weights and print loss in separate if statements?
+
+8. Split RONN loss and plot
+
+9. Other tutorials
+
+10. Push to github (after moving around folders)
 """
 
 import torch
@@ -33,6 +31,7 @@ from rbnics.utils.io.online_size_dict import OnlineSizeDict
 import matplotlib.pyplot as plt
 from mlnics.Normalization import IdentityNormalization
 from mlnics.Losses import reinitialize_loss
+from mlnics.IO import save_state, read_losses
 import sys
 
 
@@ -47,6 +46,7 @@ class RONN(nn.Module):
         """
 
         super(RONN, self).__init__()
+        self.name = "RONN"
 
         self.problem = problem
         self.reduction_method = reduction_method
@@ -110,9 +110,6 @@ class RONN(nn.Module):
 
         self.activation = activation
 
-        self.train_idx = None
-        self.validation_idx = None
-
     def forward(self, mu):
         """
         Map parameter mu --> reduced order coefficient
@@ -167,7 +164,8 @@ class RONN(nn.Module):
         return coeff_matrix
 
     def get_inner_product_matrix(self):
-        return torch.tensor(np.array(self.reduced_problem._combine_all_inner_products()))
+        inner_product = torch.tensor(np.array(self.reduced_problem._combine_all_inner_products()))
+        return inner_product
 
     def get_operator_matrices(self, mu=None):
         if mu is None:
@@ -273,12 +271,15 @@ def get_test(ronn):
     return mu
 
 
-def normalize_and_train(ronn, data, loss_fn, input_normalization=None, optimizer=torch.optim.Adam,
-                        epochs=10000, lr=1e-3, print_every=100, folder='./model_checkpoints/', use_validation=True):
+def normalize_and_train(ronn, data, loss_fn, optimizer=torch.optim.Adam, input_normalization=None,
+                        epochs=10000, lr=1e-3, print_every=100, starting_epoch=0,
+                        folder='./model_checkpoints/', use_validation=True):
     """
     If input_normalization has not yet been fit, then this function fits it to the training data.
     """
     assert data.initialized
+
+    ronn.name = loss_fn.name()
 
     # default initialization for input_normalization
     if input_normalization is None:
@@ -286,29 +287,28 @@ def normalize_and_train(ronn, data, loss_fn, input_normalization=None, optimizer
 
     train, validation = data.train_validation_split()
     train_normalized = input_normalization(train, axis=0) # also initializes normalization
-    validation_normalized = input_normalization(validation, axis=0)
+    if validation is not None:
+        validation_normalized = input_normalization(validation, axis=0)
+    else:
+        validation_normalized = None
+
+    val_snapshot_idx = data.get_validation_snapshot_index()
+    train_snapshot_idx = data.get_train_snapshot_index()
+
+    if not loss_fn.operators_initialized:
+        loss_fn.set_snapshot_index(train_snapshot_idx)
+        loss_fn.set_mu(train)
 
     # initialize the same loss as loss_fn for validation
-    if validation is not None:
-        val_t0_idx = data.get_validation_initial_time_index()
-        train_t0_idx = data.get_train_initial_time_index()
-        assert (val_t0_idx is None and train_t0_idx is None) or ronn.time_dependent
-
-        val_snapshot_idx = data.get_validation_snapshot_index()
-        train_snapshot_idx = data.get_train_snapshot_index()
-
-        loss_fn_validation = reinitialize_loss(ronn, loss_fn, validation, val_snapshot_idx, val_t0_idx)
-
-        if not loss_fn.operators_initialized:
-            loss_fn.set_snapshot_index(train_snapshot_idx)
-            loss_fn.set_initial_time_index(train_t0_idx)
-            loss_fn.set_mu(train)
+    if validation is not None and use_validation:
+        loss_fn_validation = reinitialize_loss(ronn, loss_fn, validation, val_snapshot_idx)
+    else:
+        loss_fn_validation = None
 
     ############################# Train the model #############################
-    optimizer = optimizer(ronn.parameters(), lr=lr)
 
     optimizer.zero_grad()
-    for e in range(epochs):
+    for e in range(starting_epoch, starting_epoch+epochs):
         coeff_pred = ronn(train_normalized)
         loss = loss_fn(coeff_pred, normalized_mu=train_normalized)
 
@@ -322,26 +322,13 @@ def normalize_and_train(ronn, data, loss_fn, input_normalization=None, optimizer
                 pred = ronn(validation_normalized)
                 validation_loss = loss_fn_validation(pred, normalized_mu=validation_normalized)
                 print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
-                """
-                torch.save({
-                    'epoch': e,
-                    'model_state_dict': ronn.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss.item(),
-                    'validation_loss': validation_loss
-                }, folder + f"model_checkpoint_{e}")
-                """
             else:
+                validation_loss = None
                 print(e, loss.item())
-                """
-                torch.save({
-                    'epoch': e,
-                    'model_state_dict': ronn.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss.item()
-                }, folder + f"model_checkpoint_{e}")
-                """
 
+            save_state(e, ronn, data, optimizer,
+                      (loss, loss_fn), (validation_loss, loss_fn_validation),
+                      suffix=loss_fn.name())
             ronn.train()
 
     optimizer.zero_grad()
@@ -373,7 +360,7 @@ def compute_reduced_solutions(reduced_problem, mu):
     return np.array(solutions)
 
 
-def compute_error(ronn, pred, ro_solutions, euclidean=False):
+def compute_error(ronn, pred, ro_solutions, euclidean=False, relative=True, eps=1e-12):
     """
     Compute error based on the inner product for the given problem.
     Assumes that input normalization has already been applied to normalized_mu.
@@ -393,26 +380,42 @@ def compute_error(ronn, pred, ro_solutions, euclidean=False):
         if euclidean:
             norm_sq_diff = np.sum(difference**2)
             norm_sq_sol = np.sum(ro_solution_i**2)
-            relative_error = np.sqrt(norm_sq_diff / norm_sq_sol)
-            errors.append(relative_error)
+            if relative:
+                relative_error = np.sqrt(norm_sq_diff / (norm_sq_sol + eps))
+                errors.append(relative_error)
+            else:
+                error = np.sqrt(norm_sq_diff)
+                errors.append(error)
         else:
             if len(ronn.problem.components) == 1:
                 inner = ronn.problem.inner_product[0].array()
                 norm_sq_diff = (difference.T @ inner @ difference)[0, 0]
                 norm_sq_sol = (ro_solution_i.T @ inner @ ro_solution_i)[0, 0]
-                relative_error = np.sqrt(norm_sq_diff / norm_sq_sol)
-                errors.append(relative_error)
+                if relative:
+                    relative_error = np.sqrt(norm_sq_diff / (norm_sq_sol + eps))
+                    errors.append(relative_error)
+                else:
+                    error = np.sqrt(norm_sq_diff)
+                    errors.append(error)
             else:
                 for component in ronn.problem.components:
                     inner = ronn.problem.inner_product[component][0].array()
                     norm_sq_diff = (difference.T @ inner @ difference)[0, 0]
                     norm_sq_sol = (ro_solution_i.T @ inner @ ro_solution_i)[0, 0]
-                    relative_error = np.sqrt(norm_sq_diff / norm_sq_sol)
+                    if relative:
+                        relative_error = np.sqrt(norm_sq_diff / (norm_sq_sol + eps))
 
-                    if component not in errors:
-                        errors[component] = [relative_error]
+                        if component not in errors:
+                            errors[component] = [relative_error]
+                        else:
+                            errors[component].append(relative_error)
                     else:
-                        errors[component].append(relative_error)
+                        error = np.sqrt(norm_sq_diff)
+
+                        if component not in errors:
+                            errors[component] = [error]
+                        else:
+                            errors[component].append(error)
 
     return errors
 
@@ -433,7 +436,7 @@ def plot_error(ronn, mu, input_normalization=None, ind1=0, ind2=1, cmap="bwr"):
     return errors, plot
 
 
-def error_analysis_fixed_net(ronn, mu, input_normalization, euclidean=False, print_results=True):
+def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization, euclidean=False, relative=True, print_results=True):
     """
     mu: calculate error of neural network ronn on test set mu (not time augmented)
     """
@@ -444,19 +447,19 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, euclidean=False, pri
     else:
         normalized_mu = input_normalization(mu, axis=0)
 
-    nn_solutions = ronn(normalized_mu).detach().numpy()
+    nn_solutions = output_normalization(ronn(normalized_mu).T, normalize=False).T.detach().numpy()
     ro_solutions = compute_reduced_solutions(ronn.reduced_problem, mu)
     hf_solutions = compute_reduced_solutions(ronn.problem, mu)
 
     # compute error from neural net to high fidelity
     coeff = ronn.get_coefficient_matrix().detach().numpy()
-    nn_hf_error = compute_error(ronn, (coeff @ nn_solutions.T).T, hf_solutions, euclidean=euclidean)
+    nn_hf_error = compute_error(ronn, (coeff @ nn_solutions.T).T, hf_solutions, euclidean=euclidean, relative=relative)
 
     # compute error from neural net to reduced order
-    nn_ro_error = compute_error(ronn, (coeff @ nn_solutions.T).T, coeff @ ro_solutions, euclidean=euclidean)
+    nn_ro_error = compute_error(ronn, (coeff @ nn_solutions.T).T, coeff @ ro_solutions, euclidean=euclidean, relative=relative)
 
     # compute error from reduced order to high fidelity
-    ro_hf_error = compute_error(ronn, (coeff @ ro_solutions.T).T, hf_solutions, euclidean=euclidean)
+    ro_hf_error = compute_error(ronn, (coeff @ ro_solutions.T).T, hf_solutions, euclidean=euclidean, relative=relative)
 
     if print_results:
         if len(ronn.problem.components) > 1:
@@ -469,15 +472,30 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, euclidean=False, pri
     return nn_hf_error, nn_ro_error, ro_hf_error
 
 
-def error_analysis_by_network(nets, mu, input_normalization, euclidean=False, print_results=True):
+
+def error_analysis_by_network(nets, mu, input_normalization, output_normalization, euclidean=False, relative=True):
     """
     nets: dictionary of neural networks
     """
-    for net_name in nets:
+
+    print(85*"#")
+
+    for i, net_name in enumerate(nets):
         net = nets[net_name]
-        print("Error analysis for " + net_name)
-        _ = error_analysis_fixed_net(net, mu, input_normalization, euclidean=euclidean, print_results=print_results)
-        print("")
+        if i == 0:
+            if relative:
+                print(f"Mean Relative Error for {net.ro_dim} Basis Functions")
+            else:
+                print(f"Mean Error for {net.ro_dim} Basis Functions")
+            print("Network\t\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
+        nn_hf_error, nn_ro_error, ro_hf_error = error_analysis_fixed_net(
+            net, mu, input_normalization, output_normalization,
+            euclidean=euclidean, relative=relative,
+            print_results=False
+        )
+        print(f"{net_name}\t{np.mean(nn_hf_error)}\t{np.mean(nn_ro_error)}\t{np.mean(ro_hf_error)}")
+
+    print(85*"#")
 
 def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, activation=torch.tanh):
 
@@ -501,14 +519,71 @@ def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, act
     raise NotImplementedError()
 
 
+def plot_loss(ronn):
+    suffix = ronn.name
+    epochs, losses, val_losses = read_losses(ronn, suffix=suffix)
 
-"""
-Table for error analysis (perhaps need two types of tables?
---1 for net comparison, 1 for # basis functions comparison?)
-"""
-class RONNPerformanceTable:
-    def __init__(self):
-        pass
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
 
-    def __str__(self):
-        pass
+    ax.plot(epochs, losses, label="Train Loss")
+    if val_losses.shape[0] > 0:
+        ax.plot(epochs, val_losses, label="Validation Loss")
+        ax.legend()
+
+    ax.set_title(suffix + " Loss")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+
+    return fig, ax
+
+
+def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=0, component=''):
+    """
+    mu is a tuple.
+    t is an int.
+    component is a str.
+    """
+    problem = ronn.problem
+    reduced_problem = ronn.reduced_problem
+    V = problem.V
+
+    mu_nn = torch.tensor(mu)
+    nn_solution = ronn.solve(mu_nn, input_normalization, output_normalization)
+    problem.set_mu(mu)
+    problem.solve()
+
+    if not ronn.time_dependent:
+        if len(component) > 0:
+            P = plot(
+                    project(
+                        problem._solution\
+                            - reduced_problem.basis_functions * nn_solution, V
+                    ), component='p'
+            )
+            plt.colorbar(P)
+        else:
+            P = plot(
+                    project(
+                        ronn.problem._solution\
+                            - reduced_problem.basis_functions * nn_solution, V
+                    )
+            )
+            plt.colorbar(P)
+    else:
+        if len(component) > 0:
+            P = plot(
+                    project(
+                        problem._solution_over_time[t]\
+                            - reduced_problem.basis_functions * nn_solution[t], V
+                    ), component='p'
+            )
+            plt.colorbar(P)
+        else:
+            P = plot(
+                    project(
+                        ronn.problem._solution_over_time[t]\
+                            - reduced_problem.basis_functions * nn_solution[t], V
+                    )
+            )
+            plt.colorbar(P)

@@ -7,11 +7,9 @@ class RONNDataLoader:
         self.ronn = ronn
 
         self.train_idx = None
-        self.train_t0_idx = None
         self.train_data = None
 
         self.val_idx = None
-        self.val_t0_idx = None
         self.val_data = None
 
         self.validation_proportion = 0.0
@@ -40,26 +38,26 @@ class RONNDataLoader:
             self.train_data = ronn.augment_parameters_with_time(mu[train_idx])
             self.val_data = ronn.augment_parameters_with_time(mu[val_idx])
 
-            self.val_t0_idx = ronn.num_times * val_idx
-            self.train_t0_idx = ronn.num_times * train_idx
+            val_t0_idx = ronn.num_times * val_idx
+            train_t0_idx = ronn.num_times * train_idx
+
 
             self.val_idx = []
-            for idx in self.val_t0_idx:
+            for idx in val_t0_idx:
                 for i in range(ronn.num_times):
                     self.val_idx.append(idx+i)
             self.val_idx = torch.tensor(self.val_idx)
 
             self.train_idx = []
-            for idx in self.train_t0_idx:
+            for idx in train_t0_idx:
                 for i in range(ronn.num_times):
                     self.train_idx.append(idx+i)
             self.train_idx = torch.tensor(self.train_idx)
 
-
             return (self.train_data, self.val_data)
         elif num_validation == 0:
             self.train_data = ronn.augment_parameters_with_time(mu)
-            return (self.train_data, None)
+            return (self.train_data, self.val_data)
         else:
             raise ValueError(f"validation_proportion too large (empty training set).")
 
@@ -82,43 +80,6 @@ class RONNDataLoader:
 
     def get_train_snapshot_index(self):
         return self.train_idx
-
-    def get_validation_initial_time_index(self):
-        """
-        Returns the indices of the snapshot matrix obtained from self.ronn which
-        correspond to the initial times in the validation set.
-        """
-        ronn = self.ronn
-
-        assert self.initialized
-        assert self.val_idx is not None
-
-        if not ronn.time_dependent:
-            return None
-
-        T0_idx = torch.zeros(ronn.num_snapshots, dtype=torch.bool)
-        T0_idx[torch.arange(0, ronn.num_snapshots, ronn.num_times)] = True
-        return T0_idx[self.val_t0_idx].nonzero().view(-1)
-
-    def get_train_initial_time_index(self):
-        """
-        Returns the indices of the snapshot matrix obtained from self.ronn which
-        correspond to the initial times in the training set.
-        """
-        ronn = self.ronn
-
-        assert self.initialized
-
-        if not ronn.time_dependent:
-            return None
-
-        if self.train_t0_idx is None:
-            return torch.arange(0, ronn.num_snapshots, ronn.num_times)
-        else:
-            T0_idx = torch.zeros(ronn.num_snapshots, dtype=torch.bool)
-            T0_idx[torch.arange(0, ronn.num_snapshots, ronn.num_times)] = True
-            return T0_idx[self.train_t0_idx].nonzero().view(-1)
-
 
     def save(self):
         raise NotImplementedError()
