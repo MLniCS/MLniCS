@@ -20,7 +20,7 @@ def normalize_and_train(ronn, data, loss_fn, optimizer=torch.optim.Adam, input_n
     if input_normalization is None:
         input_normalization = IdentityNormalization()
 
-    train, validation = data.train_validation_split()
+    train, validation, train_no_snaps, val_no_snaps = data.train_validation_split()
     train_normalized = input_normalization(train) # also initializes normalization
     if validation is not None:
         validation_normalized = input_normalization(validation)
