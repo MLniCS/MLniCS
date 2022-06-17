@@ -10,7 +10,7 @@ import os
 import pickle
 import glob
 
-def save_state(epoch, ronn, data, optimizer, train_loss, val_loss, suffix=""):
+def save_state(epoch, ronn, data, optimizer, train_loss_fn, val_loss_fn, suffix=""):
     """
     Save the reduced order neural network state which includes
         - neural network weights
@@ -56,17 +56,31 @@ def save_state(epoch, ronn, data, optimizer, train_loss, val_loss, suffix=""):
     }, folder + f"/checkpoint_{epoch}.pt")
 
 
-    current_train_loss, train_loss_fn = train_loss
-    current_val_loss, val_loss_fn = val_loss
+    current_train_loss = train_loss_fn.value
+    if val_loss_fn is not None:
+        current_val_loss = val_loss_fn.value
+
+    if type(current_train_loss) is not dict:
+        current_train_loss = current_train_loss.item()
+        if val_loss_fn is not None:
+            assert type(current_val_loss) is not dict
+            current_val_loss = current_val_loss.item()
+    else:
+        for key in current_train_loss:
+            current_train_loss[key] = current_train_loss[key].item()
+        if val_loss_fn is not None:
+            assert type(current_val_loss) is dict
+            for key in current_val_loss:
+                current_val_loss[key] = current_val_loss[key].item()
 
     metadata = {
         'epoch': epoch,
-        'train_loss': current_train_loss.item(),
+        'train_loss': current_train_loss,
         'train_loss_type': train_loss_fn.name()
     }
 
     if val_loss_fn is not None:
-        metadata['validation_loss'] = current_val_loss.item()
+        metadata['validation_loss'] = current_val_loss
         metadata['validation_loss_type'] = val_loss_fn.name()
 
     with open(folder + f"/metadata_{epoch}.pkl", 'wb') as f:
@@ -118,6 +132,9 @@ def choose_state(ronn, suffix="", by_validation=True):
             losses.append(loss)
             epochs.append(epoch)
 
+    if type(losses[0]) is dict:
+        losses = list(map(lambda d: d["loss"], losses))
+
     loss, idx = min((val, idx) for (idx, val) in enumerate(losses))
     epoch = epochs[idx]
     return epoch
@@ -140,5 +157,35 @@ def read_losses(ronn, suffix=""):
             epochs.append(epoch)
 
     idx = np.argsort(epochs)
+    if len(val_losses) > 0:
+        if type(losses[0]) is dict:
+            loss_dict = dict()
+            val_loss_dict = dict()
+            for key in losses[0]:
+                loss_dict[key] = np.array(list(map(lambda d: d[key], losses)))[idx]
+                val_loss_dict[key] = np.array(list(map(lambda d: d[key], val_losses)))[idx]
+            return np.array(epochs)[idx], loss_dict, val_loss_dict
+        else:
+            return np.array(epochs)[idx], np.array(losses)[idx], np.array(val_losses)[idx]
+    else:
+        if type(losses[0]) is dict:
+            loss_dict = dict()
+            for key in losses[0]:
+                loss_dict[key] = np.array(list(map(lambda d: d[key], losses)))[idx]
+            return np.array(epochs)[idx], loss_dict, None
+        else:
+            return np.array(epochs)[idx], np.array(losses)[idx], None
 
-    return np.array(epochs)[idx], np.array(losses)[idx], np.array(val_losses)[idx]
+def initialize_parameters(net, data, optimizer, suffix="", by_validation=True):
+    loaded_previous_parameters = False
+
+    if os.path.exists(net.reduction_method.folder_prefix + "/checkpoints" + suffix):
+        best_epoch = choose_state(net, suffix=suffix, by_validation=True)
+        load_state(best_epoch, net, data, optimizer, suffix=suffix)
+        starting_epoch = best_epoch
+        loaded_previous_parameters = True
+    else:
+        _ = data.train_validation_split()
+        starting_epoch = 0
+
+    return loaded_previous_parameters, starting_epoch

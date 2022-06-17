@@ -3,8 +3,11 @@ import torch
 
 
 class RONNDataLoader:
-    def __init__(self, ronn):
+    def __init__(self, ronn, validation_proportion=0.2, num_without_snapshots=0, sampling=None):
         self.ronn = ronn
+
+        self.validation_proportion = validation_proportion
+        self.initialized = False
 
         self.train_idx = None
         self.train_data = None
@@ -12,16 +15,16 @@ class RONNDataLoader:
         self.val_idx = None
         self.val_data = None
 
-        self.validation_proportion = 0.0
-        self.initialized = False
+        # training/validation sets of parameters without corresponding snapshots
+        self.train_data_no_snaps = None
+        self.val_data_no_snaps = None
 
-    def train_validation_split(self, validation_proportion=0.2):
+    def train_validation_split(self):
         if self.initialized:
             assert np.isclose(validation_proportion, self.validation_proportion)
             return (self.train_data, self.val_data)
 
         self.initialized = True
-        self.validation_proportion = validation_proportion
 
         ronn = self.ronn
         mu = ronn.mu # does not contain time as parameter
@@ -83,3 +86,12 @@ class RONNDataLoader:
 
     def save(self):
         raise NotImplementedError()
+
+
+def get_test(ronn):
+    """
+    Assumes that testing set has already been initialized.
+    Returns: torch.tensor
+    """
+    mu = torch.tensor(ronn.reduction_method.testing_set)
+    return mu

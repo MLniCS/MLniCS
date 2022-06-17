@@ -7,6 +7,7 @@ class RONN_Loss_Base:
         self.operators_initialized = False
         self.mu = mu
         self.snapshot_idx = snapshot_idx
+        self.value = None
 
     def name(self):
         return "RONN_Base"
@@ -118,7 +119,9 @@ class PINN_Loss(RONN_Loss_Base):
         loss1 = torch.mean(torch.sum(res1**2, dim=1)) if type(res1) is not float else res1
         loss2 = torch.mean(torch.sum(res2**2, dim=1)) if type(res2) is not float else res2
 
-        return loss1 + loss2 + initial_condition_loss
+        self.value = loss1 + loss2 + initial_condition_loss
+
+        return self.value
 
 
 class PDNN_Loss(RONN_Loss_Base):
@@ -150,8 +153,9 @@ class PDNN_Loss(RONN_Loss_Base):
         if not self.operators_initialized:
             self._compute_operators()
 
+        self.value = torch.mean((pred.T - self.proj_snapshots)**2)
 
-        return torch.mean((pred.T - self.proj_snapshots)**2)
+        return self.value
 
 
 class PRNN_Loss(RONN_Loss_Base):
@@ -160,6 +164,10 @@ class PRNN_Loss(RONN_Loss_Base):
         self.omega = omega
         self.pinn_loss = PINN_Loss(ronn, normalization, mu, snapshot_idx)
         self.pdnn_loss = PDNN_Loss(ronn, normalization, mu, snapshot_idx)
+        self.value = dict()
+        self.value["pinn_loss"] = None
+        self.value["pdnn_loss"] = None
+        self.value["loss"] = None
 
     def name(self):
         return f"PRNN_{self.omega}"
@@ -173,7 +181,12 @@ class PRNN_Loss(RONN_Loss_Base):
         self.pdnn_loss.set_snapshot_index(idx)
 
     def __call__(self, pred, **kwargs):
-        return self.pinn_loss(pred, **kwargs) + self.omega * self.pdnn_loss(pred, **kwargs)
+
+        self.value["pinn_loss"] = self.pinn_loss(pred, **kwargs)
+        self.value["pdnn_loss"] = self.pdnn_loss(pred, **kwargs)
+        self.value["loss"] = self.value["pinn_loss"] + self.omega * self.value["pdnn_loss"]
+
+        return self.value["loss"]
 
 
 def reinitialize_loss(ronn, loss_fn, mu, snapshot_idx):
