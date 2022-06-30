@@ -38,12 +38,15 @@ def save_state(epoch, ronn, data, optimizer, train_loss_fn, val_loss_fn, suffix=
         torch.save(data.train_data, data_folder + "/train_data.pt")
         torch.save(data.val_idx, data_folder + "/val_idx.pt")
         torch.save(data.val_data, data_folder + "/val_data.pt")
+        torch.save(data.train_data_no_snaps, data_folder + "/train_data_no_snaps.pt")
+        torch.save(data.val_data_no_snaps, data_folder + "/val_data_no_snaps.pt")
 
         # save the non-Tensor attributes
         data_metadata = {
             "name": ronn.name,
             "validation_proportion": data.validation_proportion,
-            "initialized": data.initialized
+            "initialized": data.initialized,
+            "num_without_snapshots": data.num_without_snapshots
         }
         with open(data_folder + "/basic_attributes.pkl", 'wb') as f:
             pickle.dump(data_metadata, f)
@@ -97,10 +100,13 @@ def load_state(epoch, ronn, data, optimizer, suffix=""):
     data.train_data = torch.load(data_folder + "/train_data.pt")
     data.val_idx = torch.load(data_folder + "/val_idx.pt")
     data.val_data = torch.load(data_folder + "/val_data.pt")
+    data.train_data_no_snaps = torch.load(data_folder + "/train_data_no_snaps.pt")
+    data.val_data_no_snaps = torch.load(data_folder + "/val_data_no_snaps.pt")
     with open(data_folder + "/basic_attributes.pkl", 'rb') as f:
         data_metadata = pickle.load(f)
     data.validation_proportion = data_metadata["validation_proportion"]
     data.initialized = data_metadata["initialized"]
+    data.num_without_snapshots = data_metadata["num_without_snapshots"]
     ronn.name = data_metadata["name"]
 
     # load the model and optimizer parameters

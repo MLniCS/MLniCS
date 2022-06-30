@@ -144,7 +144,7 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
 
 
 
-def error_analysis_by_network(nets, mu, input_normalization, output_normalization, euclidean=False, relative=True):
+def error_analysis_by_network(nets, mu, input_normalizations, output_normalizations, euclidean=False, relative=True):
     """
     nets: dictionary of neural networks
     """
@@ -153,6 +153,8 @@ def error_analysis_by_network(nets, mu, input_normalization, output_normalizatio
 
     for i, net_name in enumerate(nets):
         net = nets[net_name]
+        input_normalization = input_normalizations[net_name]
+        output_normalization = output_normalizations[net_name]
         if i == 0:
             if relative:
                 print(f"Mean Relative Error for {net.ro_dim} Basis Functions")

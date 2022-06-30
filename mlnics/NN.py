@@ -1,19 +1,3 @@
-"""
-TO DO:
-
-1. When reduction method is ReducedBasis, we currently aren't using a lot of training data
-    (just the mu's from mu greedy which is very few-->high error on validation)
-   Make it possible to use different training data for PDNN and PINN.
-
-2. Other tutorials
-
-3. Speedup analysis
-
-4. Batching
-
-5. Boundary conditions in PINN loss?
-"""
-
 import torch
 import torch.nn as nn
 import numpy as np
