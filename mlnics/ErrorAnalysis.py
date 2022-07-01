@@ -7,6 +7,7 @@ from rbnics.utils.io.text_line import TextLine
 from mlnics.Normalization import IdentityNormalization
 from mlnics.NN import RONN
 
+NN_FOLDER = "/nn_results"
 
 def compute_reduced_solutions(reduced_problem, mu):
     """
@@ -105,6 +106,10 @@ def plot_error(ronn, mu, input_normalization=None, ind1=0, ind2=1, cmap="bwr"):
     coeff = ronn.get_coefficient_matrix().detach().numpy()
     errors = compute_error(ronn, (coeff @ pred.T).T, hf_solutions)
     plot = plt.scatter(mu[:, ind1], mu[:, ind2], c=errors, cmap=cmap)
+
+    folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
+    plt.savefig(folder + "/error_by_parameter.png")
+
     return errors, plot
 
 
@@ -215,7 +220,7 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                     project(
                         problem._solution\
                             - reduced_problem.basis_functions * nn_solution, V
-                    ), component='p'
+                    ), component=component
             )
             plt.colorbar(P)
         else:
@@ -232,7 +237,7 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                     project(
                         problem._solution_over_time[t]\
                             - reduced_problem.basis_functions * nn_solution[t], V
-                    ), component='p'
+                    ), component=component
             )
             plt.colorbar(P)
         else:
@@ -243,3 +248,6 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                     )
             )
             plt.colorbar(P)
+
+    folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
+    plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution_difference.png")

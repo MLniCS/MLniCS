@@ -9,11 +9,7 @@ class RONNDataLoader:
 
         self.validation_proportion = validation_proportion
         self.initialized = False
-
-        self.train_idx = None
         self.train_data = None
-
-        self.val_idx = None
         self.val_data = None
 
         # training/validation sets of parameters without corresponding snapshots
@@ -37,28 +33,8 @@ class RONNDataLoader:
             #       time dependent.
             num_validation = int(mu.shape[0]*self.validation_proportion)
             if num_validation > 0 and mu.shape[0] - num_validation > 0:
-                perm = torch.randperm(mu.shape[0])
-                val_idx = perm[:num_validation]
-                train_idx = perm[num_validation:]
-                self.train_data = ronn.augment_parameters_with_time(mu[train_idx])
-                self.val_data = ronn.augment_parameters_with_time(mu[val_idx])
-
-                val_t0_idx = ronn.num_times * val_idx
-                train_t0_idx = ronn.num_times * train_idx
-
-
-                self.val_idx = []
-                for idx in val_t0_idx:
-                    for i in range(ronn.num_times):
-                        self.val_idx.append(idx+i)
-                self.val_idx = torch.tensor(self.val_idx)
-
-                self.train_idx = []
-                for idx in train_t0_idx:
-                    for i in range(ronn.num_times):
-                        self.train_idx.append(idx+i)
-                self.train_idx = torch.tensor(self.train_idx)
-
+                self.train_data = ronn.augment_parameters_with_time(mu[num_validation:])
+                self.val_data = ronn.augment_parameters_with_time(mu[:num_validation])
             elif num_validation == 0:
                 self.train_data = ronn.augment_parameters_with_time(mu)
             else:

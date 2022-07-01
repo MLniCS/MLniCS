@@ -3,200 +3,184 @@ import matplotlib.pyplot as plt
 from mlnics.Normalization import IdentityNormalization
 from mlnics.IO import save_state, read_losses
 
+NN_FOLDER = "/nn_results"
 
+class RONNTrainer:
+    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+                 input_normalization=None, num_epochs=10000, lr=1e-3,
+                 print_every=100, starting_epoch=0, use_validation=True):
+        assert data.initialized
 
-def normalize_and_train_pdnn(ronn, data, loss_fn, optimizer=torch.optim.Adam, input_normalization=None,
-                             epochs=10000, lr=1e-3, print_every=100, starting_epoch=0,
-                             folder='./model_checkpoints/', use_validation=True):
-    """
-    If input_normalization has not yet been fit, then this function fits it to the training data.
-    """
-    assert data.initialized
+        ronn.loss_type = loss_fn.name()
 
-    ronn.name = loss_fn.name()
+        # default initialization for input_normalization
+        if input_normalization is None:
+            input_normalization = IdentityNormalization()
 
-    # default initialization for input_normalization
-    if input_normalization is None:
-        input_normalization = IdentityNormalization()
+        self.ronn = ronn
+        self.data = data
+        self.loss_fn = loss_fn
+        self.optimizer = optimizer
+        self.input_normalization = input_normalization
+        self.num_epochs = num_epochs
+        self.lr = lr
+        self.print_every = print_every
+        self.starting_epoch = starting_epoch
+        self.use_validation = use_validation
 
-    train, validation, _, _ = data.train_validation_split()
+    def train(self):
+        """
+        Function for getting training and validation sets to pass to
+        _normalize_and_train which then performs the training.
+        """
+        raise NotImplementedError("Cannot train with base class RONNTrainer")
 
-    train_normalized = input_normalization(train) # also initializes normalization
-    if validation is not None:
-        validation_normalized = input_normalization(validation)
-    else:
-        validation_normalized = None
+    def _normalize_and_train(self, train, validation, *args):
+        """
+        If input_normalization has not yet been fit, then this function fits it to the training data.
+        """
 
-    val_snapshot_idx = data.get_validation_snapshot_index()
-    train_snapshot_idx = data.get_train_snapshot_index()
+        if len(args) > 0:
+            assert len(args) == 4
+            train_snap, validation_snap, train_no_snap, validation_no_snap = args
+            num_train_snaps = train_snap.shape[0]
+        else:
+            num_train_snaps = train.shape[0]
 
-    if not loss_fn.operators_initialized:
-        loss_fn.set_snapshot_index(train_snapshot_idx)
-        loss_fn.set_mu(train)
+        train_normalized = self.input_normalization(train) # also initializes normalization
+        if validation is not None:
+            validation_normalized = self.input_normalization(validation)
+            num_validation_snaps = validation.shape[0] if len(args) == 0 else validation_snap.shape[0]
+        else:
+            validation_normalized = None
 
-    # initialize the same loss as loss_fn for validation
-    if validation is not None and use_validation:
-        loss_fn_validation = loss_fn.reinitialize(validation, val_snapshot_idx)
-    else:
-        loss_fn_validation = None
-
-    ############################# Train the model #############################
-
-    optimizer.zero_grad()
-    for e in range(starting_epoch, starting_epoch+epochs):
-        coeff_pred = ronn(train_normalized)
-        loss = loss_fn(coeff_pred, normalized_mu=train_normalized)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if e % print_every == 0:
-            ronn.eval()
-            if validation is not None and use_validation:
-                pred = ronn(validation_normalized)
-                validation_loss = loss_fn_validation(pred)
-                print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
+        if not self.loss_fn.operators_initialized:
+            if len(args) == 0:
+                self.loss_fn.set_mu(train)
             else:
-                validation_loss = None
-                print(e, loss.item())
+                self.loss_fn.set_mu(train_snap, train_no_snap)
+            self.loss_fn.slice_snapshots(num_validation_snaps, num_validation_snaps+num_train_snaps)
 
-            save_state(e, ronn, data, optimizer, loss_fn, loss_fn_validation, suffix=loss_fn.name())
-            ronn.train()
-
-    optimizer.zero_grad()
-
-    return loss_fn_validation
-
-def normalize_and_train_pinn(ronn, data, loss_fn, optimizer=torch.optim.Adam, input_normalization=None,
-                             epochs=10000, lr=1e-3, print_every=100, starting_epoch=0,
-                             folder='./model_checkpoints/', use_validation=True):
-    """
-    If input_normalization has not yet been fit, then this function fits it to the training data.
-    """
-    assert data.initialized
-
-    ronn.name = loss_fn.name()
-
-    # default initialization for input_normalization
-    if input_normalization is None:
-        input_normalization = IdentityNormalization()
-
-    _, _, train, validation = data.train_validation_split()
-
-    train_normalized = input_normalization(train) # also initializes normalization
-    if validation is not None:
-        validation_normalized = input_normalization(validation)
-    else:
-        validation_normalized = None
-
-    if not loss_fn.operators_initialized:
-        loss_fn.set_mu(train)
-
-    # initialize the same loss as loss_fn for validation
-    if validation is not None and use_validation:
-        loss_fn_validation = loss_fn.reinitialize(validation)
-    else:
-        loss_fn_validation = None
-
-    ############################# Train the model #############################
-
-    optimizer.zero_grad()
-    for e in range(starting_epoch, starting_epoch+epochs):
-        coeff_pred = ronn(train_normalized)
-        loss = loss_fn(coeff_pred, normalized_mu=train_normalized)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if e % print_every == 0:
-            ronn.eval()
-            if validation is not None and use_validation:
-                pred = ronn(validation_normalized)
-                validation_loss = loss_fn_validation(pred, normalized_mu=validation_normalized)
-                print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
+        # initialize the same loss as loss_fn for validation
+        if validation is not None and self.use_validation:
+            if len(args) == 0:
+                loss_fn_validation = self.loss_fn.reinitialize(validation)
             else:
-                validation_loss = None
-                print(e, loss.item())
+                loss_fn_validation = self.loss_fn.reinitialize(validation_snap, validation_no_snap)
+            loss_fn_validation.slice_snapshots(0, num_validation_snaps)
+        else:
+            loss_fn_validation = None
 
-            save_state(e, ronn, data, optimizer, loss_fn, loss_fn_validation, suffix=loss_fn.name())
-            ronn.train()
+        ############################# Train the model #############################
 
-    optimizer.zero_grad()
+        best_validation_loss = None
+        new_best = True
+        train_losses = []
+        validation_losses = None if validation is None else []
+        epochs = []
 
-    return loss_fn_validation
+        self.optimizer.zero_grad()
+        for e in range(self.starting_epoch, self.starting_epoch + self.num_epochs):
+            coeff_pred = self.ronn(train_normalized)
+            loss = self.loss_fn(coeff_pred[:num_train_snaps], coeff_pred[num_train_snaps:], normalized_mu=train_normalized)
 
-def normalize_and_train_prnn(ronn, data, loss_fn, optimizer=torch.optim.Adam, input_normalization=None,
-                             epochs=10000, lr=1e-3, print_every=100, starting_epoch=0,
-                             folder='./model_checkpoints/', use_validation=True):
-    """
-    If input_normalization has not yet been fit, then this function fits it to the training data.
-    """
-    assert data.initialized
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
-    ronn.name = loss_fn.name()
+            if e % self.print_every == 0:
+                self.ronn.eval()
+                if validation is not None and self.use_validation:
+                    pred = self.ronn(validation_normalized)
+                    validation_loss = loss_fn_validation(pred[:num_validation_snaps], pred[num_validation_snaps:])
+                    if best_validation_loss is None or validation_loss.item() <= best_validation_loss:
+                        best_validation_loss = validation_loss.item()
+                        new_best = True
+                    else:
+                        new_best = False
 
-    # default initialization for input_normalization
-    if input_normalization is None:
-        input_normalization = IdentityNormalization()
+                    validation_losses.append(loss_fn_validation.value)
+                    print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
+                else:
+                    print(e, loss.item())
 
-    train, validation, train_no_snap, val_no_snap = data.train_validation_split()
+                train_losses.append(self.loss_fn.value)
+                epochs.append(e)
 
-    train_cat = torch.cat([train, train_no_snap], dim=0)
-    val_cat = torch.cat([validation, val_no_snap], dim=0)
+                if new_best:
+                    save_state(e, self.ronn, self.data, self.optimizer, self.loss_fn,
+                               loss_fn_validation, epochs, train_losses, validation_losses)
+                self.ronn.train()
 
-    train_normalized = input_normalization(train_cat) # also initializes normalization
-    if validation is not None:
-        validation_normalized = input_normalization(val_cat)
-    else:
-        validation_normalized = None
+        self.optimizer.zero_grad()
 
-    val_snapshot_idx = data.get_validation_snapshot_index()
-    train_snapshot_idx = data.get_train_snapshot_index()
+        return loss_fn_validation
 
-    if not loss_fn.operators_initialized:
-        loss_fn.set_snapshot_index(train_snapshot_idx)
-        loss_fn.set_mu(train, train_no_snap)
 
-    # initialize the same loss as loss_fn for validation
-    if validation is not None and use_validation:
-        loss_fn_validation = loss_fn.reinitialize(validation, val_no_snap, val_snapshot_idx)
-    else:
-        loss_fn_validation = None
+class PDNNTrainer(RONNTrainer):
+    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+                 input_normalization=None, num_epochs=10000, lr=1e-3,
+                 print_every=100, starting_epoch=0, use_validation=True):
 
-    ############################# Train the model #############################
+        super(PDNNTrainer, self).__init__(
+            ronn, data, loss_fn, optimizer=optimizer,
+            input_normalization=input_normalization, num_epochs=num_epochs, lr=lr,
+            print_every=print_every, starting_epoch=starting_epoch, use_validation=use_validation
+        )
 
-    optimizer.zero_grad()
-    for e in range(starting_epoch, starting_epoch+epochs):
-        coeff_pred = ronn(train_normalized)
-        loss = loss_fn(coeff_pred[:train.shape[0]], coeff_pred[train.shape[0]:], normalized_mu=train_normalized)
+    def train(self):
+        """
+        Function for getting training and validation sets to pass to
+        _normalize_and_train which then performs the training.
+        """
+        train, validation, _, _ = self.data.train_validation_split()
+        return self._normalize_and_train(train, validation)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+class PINNTrainer(RONNTrainer):
+    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+                 input_normalization=None, num_epochs=10000, lr=1e-3,
+                 print_every=100, starting_epoch=0, use_validation=True):
 
-        if e % print_every == 0:
-            ronn.eval()
-            if validation is not None and use_validation:
-                pred = ronn(validation_normalized)
-                validation_loss = loss_fn_validation(pred[:validation.shape[0]], pred[validation.shape[0]:])
-                print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
-            else:
-                validation_loss = None
-                print(e, loss.item())
+        super(PINNTrainer, self).__init__(
+            ronn, data, loss_fn, optimizer=optimizer,
+            input_normalization=input_normalization, num_epochs=num_epochs, lr=lr,
+            print_every=print_every, starting_epoch=starting_epoch, use_validation=use_validation
+        )
 
-            save_state(e, ronn, data, optimizer, loss_fn, loss_fn_validation, suffix=loss_fn.name())
-            ronn.train()
+    def train(self):
+        """
+        Function for getting training and validation sets to pass to
+        _normalize_and_train which then performs the training.
+        """
+        _, _, train, validation = self.data.train_validation_split()
+        return self._normalize_and_train(train, validation)
 
-    optimizer.zero_grad()
 
-    return loss_fn_validation
+
+class PRNNTrainer(RONNTrainer):
+    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+                 input_normalization=None, num_epochs=10000, lr=1e-3,
+                 print_every=100, starting_epoch=0, use_validation=True):
+
+        super(PRNNTrainer, self).__init__(
+            ronn, data, loss_fn, optimizer=optimizer,
+            input_normalization=input_normalization, num_epochs=num_epochs, lr=lr,
+            print_every=print_every, starting_epoch=starting_epoch, use_validation=use_validation
+        )
+
+    def train(self):
+        """
+        Function for getting training and validation sets to pass to
+        _normalize_and_train which then performs the training.
+        """
+        train, validation, train_no_snap, val_no_snap = self.data.train_validation_split()
+        train_cat = torch.cat([train, train_no_snap], dim=0)
+        val_cat = torch.cat([validation, val_no_snap], dim=0)
+        return self._normalize_and_train(train_cat, val_cat, train, validation, train_no_snap, val_no_snap)
 
 
 def plot_loss(ronn, separate=False):
-    suffix = ronn.name
-    epochs, losses, val_losses = read_losses(ronn, suffix=suffix)
+    epochs, losses, val_losses = read_losses(ronn)
 
     if not separate:
         fig = plt.figure()
@@ -214,11 +198,9 @@ def plot_loss(ronn, separate=False):
                     ax.semilogy(epochs, val_losses[key], label=f"Validation Loss ({key})")
                     ax.legend()
 
-        ax.set_title(suffix + " Loss")
+        ax.set_title(ronn.name())
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss")
-
-        return fig, ax
     else:
         if type(losses) is not dict:
             fig = plt.figure()
@@ -238,9 +220,12 @@ def plot_loss(ronn, separate=False):
                 if val_losses is not None:
                     ax.semilogy(epochs, val_losses[key], label=f"Validation Loss ({key})")
 
-        ax.set_title(suffix + " Loss")
+        ax.set_title(ronn.name())
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss")
         ax.legend()
 
-        return fig, ax
+    folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
+    fig.savefig(folder + "/loss.png")
+
+    return fig, ax

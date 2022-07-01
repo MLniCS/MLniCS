@@ -15,14 +15,14 @@ class RONN(nn.Module):
     """
     Reduced Order Neural Network
     """
-    def __init__(self, problem, reduction_method, n_hidden=2, n_neurons=100, activation=torch.tanh):
+    def __init__(self, loss_type, problem, reduction_method, n_hidden=2, n_neurons=100, activation=torch.tanh):
         """
         REQUIRES:
             problem.set_mu_range(...) has been called
         """
 
         super(RONN, self).__init__()
-        self.name = "RONN"
+        self.loss_type = loss_type
 
         self.problem = problem
         self.reduction_method = reduction_method
@@ -77,6 +77,8 @@ class RONN(nn.Module):
             self.num_snapshots = self.mu.shape[0]
 
         #### store the network topology used in RONN.forward in self.layers ####
+        self.num_hidden = n_hidden
+        self.num_neurons = n_neurons
         self.layers = nn.ModuleList()
         last_n = self.num_params
         for i in range(n_hidden):
@@ -85,6 +87,9 @@ class RONN(nn.Module):
         self.layers.append(nn.Linear(last_n, self.ro_dim))
 
         self.activation = activation
+
+    def name(self):
+        return self.loss_type + "_" + str(self.num_hidden) + "_" + str(self.num_neurons)
 
     def forward(self, mu):
         """
