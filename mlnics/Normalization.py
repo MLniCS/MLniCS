@@ -47,9 +47,27 @@ class StandardNormalization(Normalization):
         if normalize:
             if self.mean is None and self.std is None:
                 self.initialized = True
-                self.mean = torch.mean(matrix, axis=self.axis, keepdims=True)
-                self.std = torch.std(matrix, axis=self.axis, keepdims=True)
-                self.std[torch.abs(self.std) <= 1e-6] = 1.
+                # self.mean = torch.mean(matrix, axis=self.axis, keepdims=True)
+                # self.std = torch.std(matrix, axis=self.axis, keepdims=True)
+                # self.std[torch.abs(self.std) <= 1e-6] = 1.
+                self.mean = torch.mean(matrix)
+                self.std = torch.std(matrix)
             return (matrix - self.mean) / self.std
         else:
             return matrix * self.std + self.mean
+
+class MinMaxNormalization(Normalization):
+     def __init__(self, input_normalization=False):
+         super(MinMaxNormalization, self).__init__(input_normalization)
+         self.min = None
+         self.max = None
+
+     def __call__(self, matrix, normalize=True):
+         if normalize:
+             if self.min is None and self.max is None:
+                 self.initialized = True
+                 self.min = torch.min(matrix, axis=self.axis, keepdims=True)
+                 self.max = torch.max(matrix, axis=self.axis, keepdims=True)
+             return (matrix - self.min) / (self.max - self.min)
+         else:
+             return (self.max - self.min) * matrix + self.min

@@ -203,46 +203,44 @@ def plot_loss(ronn, separate=False):
         ax = fig.add_subplot(1, 1, 1)
 
         if type(losses) is not dict:
-            ax.plot(epochs, losses, label="Train Loss")
+            ax.semilogy(epochs, losses, label="Train Loss")
             if val_losses is not None:
                 ax.plot(epochs, val_losses, label="Validation Loss")
                 ax.legend()
         else:
             for key in losses:
-                ax.plot(epochs, losses[key], label=f"Train Loss ({key})")
+                ax.semilogy(epochs, losses[key], label=f"Train Loss ({key})")
                 if val_losses is not None:
-                    ax.plot(epochs, val_losses[key], label=f"Validation Loss ({key})")
+                    ax.semilogy(epochs, val_losses[key], label=f"Validation Loss ({key})")
                     ax.legend()
 
         ax.set_title(suffix + " Loss")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss")
-        ax.set_yscale('log')
 
         return fig, ax
     else:
         if type(losses) is not dict:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
-            ax.plot(epochs, losses, label="Train Loss")
+            ax.semilogy(epochs, losses, label="Train Loss")
 
             if val_losses is not None:
                 fig = plt.figure()
                 ax = fig.add_subplot(1, 1, 1)
-                ax.plot(epochs, val_losses, label="Validation Loss")
+                ax.semilogy(epochs, val_losses, label="Validation Loss")
         else:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
             for key in losses:
-                ax.plot(epochs, losses[key], label=f"Train Loss ({key})")
+                ax.semilogy(epochs, losses[key], label=f"Train Loss ({key})")
 
                 if val_losses is not None:
-                    ax.plot(epochs, val_losses[key], label=f"Validation Loss ({key})")
+                    ax.semilogy(epochs, val_losses[key], label=f"Validation Loss ({key})")
 
         ax.set_title(suffix + " Loss")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss")
         ax.legend()
-        ax.set_yscale('log')
 
         return fig, ax

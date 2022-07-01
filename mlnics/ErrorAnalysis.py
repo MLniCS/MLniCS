@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from fenics import *
 from rbnics import *
+from rbnics.utils.io.text_line import TextLine
 from mlnics.Normalization import IdentityNormalization
 from mlnics.NN import RONN
 
@@ -135,9 +136,11 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
     if print_results:
         if len(ronn.problem.components) > 1:
             raise NotImplementedError("Error analysis for multi-component problems not implemented yet.")
-        print("Mean Relative Error:")
-        print("N\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
-        print(f"{ronn.ro_dim}\t{np.mean(nn_hf_error)}\t{np.mean(nn_ro_error)}\t{np.mean(ro_hf_error)}")
+        print(TextLine("N = "+str(ronn.ro_dim), fill="#"))
+        print(f"ERROR\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
+        print(f"min\t{np.min(nn_hf_error)}\t{np.min(nn_ro_error)}\t{np.min(ro_hf_error)}")
+        print(f"mean\t{np.mean(nn_hf_error)}\t{np.mean(nn_ro_error)}\t{np.mean(ro_hf_error)}")
+        print(f"max\t{np.max(nn_hf_error)}\t{np.max(nn_ro_error)}\t{np.max(ro_hf_error)}")
 
     # perhaps return the solutions too so that they don't have to be computed every time this is called
     return nn_hf_error, nn_ro_error, ro_hf_error
