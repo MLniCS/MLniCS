@@ -137,40 +137,6 @@ def read_losses(ronn):
 
     return epochs, train_losses, validation_losses
 
-def read_losses_np(ronn):
-    folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
-
-    train_losses, validation_losses = None, None
-
-    with open(folder + "/metadata.pkl", 'rb') as f:
-        metadata = pickle.load(f)
-        train_losses = metadata["train_losses"]
-        epochs = metadata["epochs"]
-        if "validation_losses" in metadata:
-            validation_losses = metadata["validation_losses"]
-
-    if validation_losses is not None:
-        if type(validation_losses[0]) is dict:
-            loss_dict = dict()
-            val_loss_dict = dict()
-            for key in validation_losses[0]:
-                loss_dict[key] = np.array(list(map(lambda d: d[key].item(), train_losses)))
-                val_loss_dict[key] = np.array(list(map(lambda d: d[key].item(), validation_losses)))
-            return np.array(epochs), loss_dict, val_loss_dict
-        else:
-            train_losses = np.array(list(map(lambda d: d.item(), train_losses)))
-            validation_losses = np.array(list(map(lambda d: d.item(), validation_losses)))
-            return np.array(epochs), train_losses, validation_losses
-    else:
-        if type(train_losses[0]) is dict:
-            loss_dict = dict()
-            for key in train_losses[0]:
-                loss_dict[key] = np.array(list(map(lambda d: d[key].item(), train_losses)))
-            return np.array(epochs), loss_dict, None
-        else:
-            train_losses = np.array(list(map(lambda d: d.item(), train_losses)))
-            return np.array(epochs), train_losses, None
-
 def initialize_parameters(ronn, data, trainer, optimizer):
     loaded_previous_parameters = False
 

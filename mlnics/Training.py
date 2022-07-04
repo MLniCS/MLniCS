@@ -79,11 +79,7 @@ class RONNTrainer:
 
         ############################# Train the model #############################
 
-        #best_validation_loss = None
         new_best = False
-        #train_losses = []
-        #validation_losses = None if validation is None else []
-        #epochs = []
 
         self.optimizer.zero_grad()
         for e in range(starting_epoch, starting_epoch + self.num_epochs):
