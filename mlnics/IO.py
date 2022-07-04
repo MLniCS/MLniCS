@@ -66,45 +66,6 @@ def save_state(epoch, ronn, data, optimizer, train_loss_fn, val_loss_fn, epochs,
     if val_loss_fn is not None:
         current_val_loss = val_loss_fn.value
 
-    if type(current_train_loss) is not dict:
-        current_train_loss = current_train_loss.item()
-        train_losses_ = []
-        for i, value in enumerate(train_losses):
-            train_losses_.append(value.item())
-        train_losses = train_losses_
-
-        if val_loss_fn is not None:
-            current_val_loss = current_val_loss.item()
-            validation_losses_ = []
-            for i, value in enumerate(validation_losses):
-                validation_losses_.append(value.item())
-            validation_losses = validation_losses_
-    else:
-        current_train_loss_ = dict()
-        for key in current_train_loss:
-            current_train_loss_[key] = current_train_loss[key].item()
-        current_train_loss = current_train_loss_
-
-        train_losses_ = []
-        for i, value in enumerate(train_losses):
-            train_losses_.append(dict())
-            for key in value:
-                train_losses_[-1][key] = value[key].item()
-        train_losses = train_losses_
-
-        if val_loss_fn is not None:
-            current_val_loss_ = dict()
-            for key in current_val_loss:
-                current_val_loss_[key] = current_val_loss[key].item()
-            current_val_loss = current_val_loss_
-
-            validation_losses_ = []
-            for i, value in enumerate(validation_losses):
-                validation_losses_.append(dict())
-                for key in value:
-                    validation_losses_[-1][key] = value[key].item()
-            validation_losses = validation_losses_
-
     metadata = {
         'epoch': epoch,
         'epochs': epochs,
@@ -126,7 +87,7 @@ def save_state(epoch, ronn, data, optimizer, train_loss_fn, val_loss_fn, epochs,
 
 
 
-def load_state(ronn, data, optimizer):
+def load_state(ronn, data, trainer, optimizer):
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
 
     # load the data attributes
@@ -149,12 +110,34 @@ def load_state(ronn, data, optimizer):
     checkpoint = torch.load(folder + f"/checkpoint.pt")
     ronn.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epochs, train_losses, validation_losses = read_losses(ronn)
+    trainer.epochs = epochs
+    trainer.train_losses = train_losses
+    trainer.validation_losses = validation_losses
+    if validation_losses is not None:
+        if type(validation_losses[-1]) is not dict:
+            trainer.best_validation_loss = validation_losses[-1]
+        else:
+            trainer.best_validation_loss = validation_losses[-1]["loss"]
 
     ronn.train()
     return epoch
 
-
 def read_losses(ronn):
+    folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
+
+    train_losses, validation_losses = None, None
+
+    with open(folder + "/metadata.pkl", 'rb') as f:
+        metadata = pickle.load(f)
+        train_losses = metadata["train_losses"]
+        epochs = metadata["epochs"]
+        if "validation_losses" in metadata:
+            validation_losses = metadata["validation_losses"]
+
+    return epochs, train_losses, validation_losses
+
+def read_losses_np(ronn):
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
 
     train_losses, validation_losses = None, None
@@ -171,25 +154,28 @@ def read_losses(ronn):
             loss_dict = dict()
             val_loss_dict = dict()
             for key in validation_losses[0]:
-                loss_dict[key] = np.array(list(map(lambda d: d[key], train_losses)))
-                val_loss_dict[key] = np.array(list(map(lambda d: d[key], validation_losses)))
+                loss_dict[key] = np.array(list(map(lambda d: d[key].item(), train_losses)))
+                val_loss_dict[key] = np.array(list(map(lambda d: d[key].item(), validation_losses)))
             return np.array(epochs), loss_dict, val_loss_dict
         else:
-            return np.array(epochs), np.array(train_losses), np.array(validation_losses)
+            train_losses = np.array(list(map(lambda d: d.item(), train_losses)))
+            validation_losses = np.array(list(map(lambda d: d.item(), validation_losses)))
+            return np.array(epochs), train_losses, validation_losses
     else:
         if type(train_losses[0]) is dict:
             loss_dict = dict()
             for key in train_losses[0]:
-                loss_dict[key] = np.array(list(map(lambda d: d[key], train_losses)))
+                loss_dict[key] = np.array(list(map(lambda d: d[key].item(), train_losses)))
             return np.array(epochs), loss_dict, None
         else:
-            return np.array(epochs), np.array(train_losses), None
+            train_losses = np.array(list(map(lambda d: d.item(), train_losses)))
+            return np.array(epochs), train_losses, None
 
-def initialize_parameters(ronn, data, optimizer, by_validation=True):
+def initialize_parameters(ronn, data, trainer, optimizer):
     loaded_previous_parameters = False
 
     if os.path.exists(ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()):
-        starting_epoch = load_state(ronn, data, optimizer)
+        starting_epoch = load_state(ronn, data, trainer, optimizer)
         loaded_previous_parameters = True
     else:
         _ = data.train_validation_split()

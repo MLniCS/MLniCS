@@ -74,9 +74,6 @@ class RONNDataLoader:
     def get_train_snapshot_index(self):
         return self.train_idx
 
-    def save(self):
-        raise NotImplementedError()
-
 
 def get_test(ronn):
     """

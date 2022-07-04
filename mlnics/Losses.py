@@ -192,6 +192,7 @@ class PRNN_Loss(RONN_Loss_Base):
         self.pdnn_loss.slice_snapshots(start, end)
 
     def __call__(self, pdnn_pred, pinn_pred, **kwargs):
+        self.operators_initialized = True
         self.value = dict()
         self.value["pdnn_loss"] = self.pdnn_loss(pdnn_pred, **kwargs)
         self.value["pinn_loss"] = self.pinn_loss(pinn_pred, **kwargs)
