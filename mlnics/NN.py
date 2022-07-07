@@ -179,6 +179,31 @@ class RONN(nn.Module):
 
                 operator_dict[term] = A
 
+            elif term in ['c'] and self.time_dependent:
+                assert mu.shape[0] % self.num_times == 0
+
+                C = np.zeros((mu.shape[0], self.ro_dim))
+                num_operators = len(self.problem.operator[term])
+                for n in range(self.num_times):
+                    operators = np.zeros((num_operators, self.ro_dim))
+                    self.problem.set_time(n*self.problem.dt)
+                    for j, Cj in enumerate(self.problem.operator[term]):
+                        if type(Cj) is ParametrizedTensorFactory:
+                            Cj = np.array(evaluate(Cj))
+                        else:
+                            Cj = np.array(Cj)
+                        operators[j] = np.matmul(projection, Cj.reshape(-1, 1)).reshape(-1)
+
+                    for i in range(mu.shape[0]//self.num_times):
+                        m = mu[n + i*self.num_times]
+                        self.problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
+                        thetas = np.array(self.problem.compute_theta(term)).reshape(-1, 1)
+                        C[n + i*self.num_times] = np.sum(thetas * operators, axis=0)
+                        print(m, C[n + i*self.num_times], "\n")
+
+                C = torch.tensor(C).double()[:, :, None]
+                operator_dict[term] = C
+
             # vector terms
             elif term in ['c', 'f', 'g']:
                 C = np.zeros((mu.shape[0], self.ro_dim))

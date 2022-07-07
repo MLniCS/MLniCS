@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from mlnics.Normalization import IdentityNormalization
-from mlnics.IO import save_state, read_losses_np
+from mlnics.IO import save_state
 
 NN_FOLDER = "/nn_results"
 
@@ -39,29 +39,50 @@ class RONNTrainer:
         """
         raise NotImplementedError("Cannot train with base class RONNTrainer")
 
-    def _normalize_and_train(self, train, validation, *args):
+    def _normalize_and_train(self, train_snap, validation_snap, train_no_snap, validation_no_snap):
         """
         If input_normalization has not yet been fit, then this function fits it to the training data.
         """
 
-        starting_epoch = 0 if len(self.epochs) == 0 else self.epochs[-1]+1
-
-        if len(args) > 0:
-            assert len(args) == 4
-            train_snap, validation_snap, train_no_snap, validation_no_snap = args
+        both_snap_no_snap = False
+        if train_snap is None:
+            train = train_no_snap
+            validation = validation_no_snap
+            num_train_snaps = 0
+            num_validation_snaps = 0
+        elif train_no_snap is None:
+            train = train_snap
+            validation = validation_snap
             num_train_snaps = train_snap.shape[0]
+            if validation_snap is not None:
+                num_validation_snaps = validation_snap.shape[0]
+            else:
+                num_validation_snaps = 0
         else:
-            num_train_snaps = train.shape[0]
+            both_snap_no_snap = True
+            train = torch.cat([train_snap, train_no_snap], dim=0)
+            num_train_snaps = train_snap.shape[0]
+
+            # if the loss function uses both data with snapshots and
+            # data without snapshots, then it is necessary to have both
+            # types of data for validation
+            if validation_snap is not None and validation_no_snap is not None:
+                num_validation_snaps = validation_snap.shape[0]
+                validation = torch.cat([validation_snap, validation_no_snap], dim=0)
+            else:
+                num_validation_snaps = 0
+                validation = None
+
+        starting_epoch = 0 if len(self.epochs) == 0 else self.epochs[-1]+1
 
         train_normalized = self.input_normalization(train) # also initializes normalization
         if validation is not None:
             validation_normalized = self.input_normalization(validation)
-            num_validation_snaps = validation.shape[0] if len(args) == 0 else validation_snap.shape[0]
         else:
             validation_normalized = None
 
         if not self.loss_fn.operators_initialized:
-            if len(args) == 0:
+            if not both_snap_no_snap:
                 self.loss_fn.set_mu(train)
             else:
                 self.loss_fn.set_mu(train_snap, train_no_snap)
@@ -69,7 +90,7 @@ class RONNTrainer:
 
         # initialize the same loss as loss_fn for validation
         if validation is not None and self.use_validation:
-            if len(args) == 0:
+            if not both_snap_no_snap:
                 loss_fn_validation = self.loss_fn.reinitialize(validation)
             else:
                 loss_fn_validation = self.loss_fn.reinitialize(validation_snap, validation_no_snap)
@@ -84,7 +105,10 @@ class RONNTrainer:
         self.optimizer.zero_grad()
         for e in range(starting_epoch, starting_epoch + self.num_epochs):
             coeff_pred = self.ronn(train_normalized)
-            loss = self.loss_fn(coeff_pred[:num_train_snaps], coeff_pred[num_train_snaps:], normalized_mu=train_normalized)
+            loss = self.loss_fn(prediction_snap=coeff_pred[:num_train_snaps],
+                                prediction_no_snap=coeff_pred[num_train_snaps:],
+                                input_normalization=self.input_normalization,
+                                normalized_mu=train[num_train_snaps:])#train_normalized[num_train_snaps:])
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -94,7 +118,10 @@ class RONNTrainer:
                 self.ronn.eval()
                 if validation is not None and self.use_validation:
                     pred = self.ronn(validation_normalized)
-                    validation_loss = loss_fn_validation(pred[:num_validation_snaps], pred[num_validation_snaps:])
+                    validation_loss = loss_fn_validation(prediction_snap=pred[:num_validation_snaps],
+                                                         prediction_no_snap=pred[num_validation_snaps:],
+                                                         input_normalization=self.input_normalization,
+                                                         normalized_mu=validation[num_validation_snaps:])#validation_normalized[num_validation_snaps:])
                     if self.best_validation_loss is None or validation_loss.item() <= self.best_validation_loss:
                         self.best_validation_loss = validation_loss.item()
                         new_best = True
@@ -135,8 +162,8 @@ class PDNNTrainer(RONNTrainer):
         Function for getting training and validation sets to pass to
         _normalize_and_train which then performs the training.
         """
-        train, validation, _, _ = self.data.train_validation_split()
-        return self._normalize_and_train(train, validation)
+        train_snap, validation_snap, _, _ = self.data.train_validation_split()
+        return self._normalize_and_train(train_snap, validation_snap, None, None)
 
 class PINNTrainer(RONNTrainer):
     def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
@@ -154,8 +181,8 @@ class PINNTrainer(RONNTrainer):
         Function for getting training and validation sets to pass to
         _normalize_and_train which then performs the training.
         """
-        _, _, train, validation = self.data.train_validation_split()
-        return self._normalize_and_train(train, validation)
+        _, _, train_no_snap, validation_no_snap = self.data.train_validation_split()
+        return self._normalize_and_train(None, None, train_no_snap, validation_no_snap)
 
 
 
@@ -175,10 +202,8 @@ class PRNNTrainer(RONNTrainer):
         Function for getting training and validation sets to pass to
         _normalize_and_train which then performs the training.
         """
-        train, validation, train_no_snap, val_no_snap = self.data.train_validation_split()
-        train_cat = torch.cat([train, train_no_snap], dim=0)
-        val_cat = torch.cat([validation, val_no_snap], dim=0)
-        return self._normalize_and_train(train_cat, val_cat, train, validation, train_no_snap, val_no_snap)
+        train_snap, validation_snap, train_no_snap, val_no_snap = self.data.train_validation_split()
+        return self._normalize_and_train(train_snap, validation_snap, train_no_snap, val_no_snap)
 
 
 def plot_loss(trainer, ronn, separate=False):
@@ -218,8 +243,9 @@ def plot_loss(trainer, ronn, separate=False):
                 for key in value:
                     validation_losses_[-1][key] = value[key].item()
             validation_dict = dict()
-            for key in validation_losses[0]:
-                validation_dict[key] = np.array(list(map(lambda d: d[key], validation_losses_)))
+            if len(validation_losses) > 0:
+                for key in validation_losses[0]:
+                    validation_dict[key] = np.array(list(map(lambda d: d[key], validation_losses_)))
             validation_losses = validation_dict
 
     if not separate:
@@ -228,13 +254,13 @@ def plot_loss(trainer, ronn, separate=False):
 
         if type(train_losses) is not dict:
             ax.semilogy(epochs, train_losses, label="Train Loss")
-            if validation_losses is not None:
+            if validation_losses is not None and np.size(validation_losses) > 0:
                 ax.plot(epochs, validation_losses, label="Validation Loss")
                 ax.legend()
         else:
             for key in train_losses:
                 ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
-                if validation_losses is not None:
+                if validation_losses is not None and len(validation_losses) > 0:
                     ax.semilogy(epochs, validation_losses[key], label=f"Validation Loss ({key})")
                     ax.legend()
 
@@ -247,7 +273,7 @@ def plot_loss(trainer, ronn, separate=False):
             ax = fig.add_subplot(1, 1, 1)
             ax.semilogy(epochs, train_losses, label="Train Loss")
 
-            if validation_losses is not None:
+            if validation_losses is not None and np.size(validation_losses) > 0:
                 fig = plt.figure()
                 ax = fig.add_subplot(1, 1, 1)
                 ax.semilogy(epochs, validation_losses, label="Validation Loss")
@@ -257,7 +283,7 @@ def plot_loss(trainer, ronn, separate=False):
             for key in train_losses:
                 ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
 
-                if validation_losses is not None:
+                if validation_losses is not None and len(validation_losses) > 0:
                     ax.semilogy(epochs, validation_losses[key], label=f"Validation Loss ({key})")
 
         ax.set_title(ronn.name())

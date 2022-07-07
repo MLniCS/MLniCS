@@ -40,10 +40,7 @@ def compute_error(ronn, pred, ro_solutions, euclidean=False, relative=True, eps=
     hf_solutions are the high fidelity solutions corresponding to the non-normalized mu.
     """
 
-    if euclidean or len(ronn.problem.components) == 1:
-        errors = []
-    else:
-        errors = dict()
+    errors = []
 
     for i in range(pred.shape[0]):
         ro_solution_i = ro_solutions[i]
@@ -62,33 +59,16 @@ def compute_error(ronn, pred, ro_solutions, euclidean=False, relative=True, eps=
         else:
             if len(ronn.problem.components) == 1:
                 inner = ronn.problem.inner_product[0].array()
-                norm_sq_diff = (difference.T @ inner @ difference)[0, 0]
-                norm_sq_sol = (ro_solution_i.T @ inner @ ro_solution_i)[0, 0]
-                if relative:
-                    relative_error = np.sqrt(norm_sq_diff / (norm_sq_sol + eps))
-                    errors.append(relative_error)
-                else:
-                    error = np.sqrt(norm_sq_diff)
-                    errors.append(error)
             else:
-                for component in ronn.problem.components:
-                    inner = ronn.problem.inner_product[component][0].array()
-                    norm_sq_diff = (difference.T @ inner @ difference)[0, 0]
-                    norm_sq_sol = (ro_solution_i.T @ inner @ ro_solution_i)[0, 0]
-                    if relative:
-                        relative_error = np.sqrt(norm_sq_diff / (norm_sq_sol + eps))
-
-                        if component not in errors:
-                            errors[component] = [relative_error]
-                        else:
-                            errors[component].append(relative_error)
-                    else:
-                        error = np.sqrt(norm_sq_diff)
-
-                        if component not in errors:
-                            errors[component] = [error]
-                        else:
-                            errors[component].append(error)
+                inner = ronn.problem._combined_inner_product.array()
+            norm_sq_diff = (difference.T @ inner @ difference)[0, 0]
+            norm_sq_sol = (ro_solution_i.T @ inner @ ro_solution_i)[0, 0]
+            if relative:
+                relative_error = np.sqrt(norm_sq_diff / (norm_sq_sol + eps))
+                errors.append(relative_error)
+            else:
+                error = np.sqrt(norm_sq_diff)
+                errors.append(error)
 
     return errors
 
@@ -139,8 +119,6 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
     ro_hf_error = compute_error(ronn, (coeff @ ro_solutions.T).T, hf_solutions, euclidean=euclidean, relative=relative)
 
     if print_results:
-        if len(ronn.problem.components) > 1:
-            raise NotImplementedError("Error analysis for multi-component problems not implemented yet.")
         print(TextLine("N = "+str(ronn.ro_dim), fill="#"))
         print(f"ERROR\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
         print(f"min\t{np.min(nn_hf_error)}\t{np.min(nn_ro_error)}\t{np.min(ro_hf_error)}")
@@ -199,7 +177,7 @@ def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, act
 
     raise NotImplementedError()
 
-def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=0, component=''):
+def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=0, colorbar=False, component=-1):
     """
     mu is a tuple.
     t is an int.
@@ -215,39 +193,43 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
     problem.solve()
 
     if not ronn.time_dependent:
-        if len(component) > 0:
+        if component != -1:
             P = plot(
                     project(
                         problem._solution\
                             - reduced_problem.basis_functions * nn_solution, V
                     ), component=component
             )
-            plt.colorbar(P)
+            if colorbar:
+                plt.colorbar(P)
         else:
             P = plot(
                     project(
-                        ronn.problem._solution\
+                        problem._solution\
                             - reduced_problem.basis_functions * nn_solution, V
                     )
             )
-            plt.colorbar(P)
+            if colorbar:
+                plt.colorbar(P)
     else:
-        if len(component) > 0:
+        if component != -1:
             P = plot(
                     project(
                         problem._solution_over_time[t]\
                             - reduced_problem.basis_functions * nn_solution[t], V
                     ), component=component
             )
-            plt.colorbar(P)
+            if colorbar:
+                plt.colorbar(P)
         else:
             P = plot(
                     project(
-                        ronn.problem._solution_over_time[t]\
+                        problem._solution_over_time[t]\
                             - reduced_problem.basis_functions * nn_solution[t], V
                     )
             )
-            plt.colorbar(P)
+            if colorbar:
+                plt.colorbar(P)
 
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution_difference.png")

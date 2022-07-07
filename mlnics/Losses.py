@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from mlnics.Normalization import IdentityNormalization
 
 class RONN_Loss_Base:
@@ -28,7 +29,7 @@ class PINN_Loss(RONN_Loss_Base):
 
     RETURNS: loss function loss_fn(parameters, reduced order coefficients)
     """
-    def __init__(self, ronn, normalization=None, mu=None):
+    def __init__(self, ronn, normalization=None, beta=1., mu=None):
         super(PINN_Loss, self).__init__(ronn, mu)
         self.operators = None
         self.proj_snapshots = None
@@ -36,6 +37,8 @@ class PINN_Loss(RONN_Loss_Base):
         self.normalization = normalization
         if self.normalization is None:
             self.normalization = IdentityNormalization()
+
+        self.beta = beta
 
         # if time dependent, we need the neural net to compute time derivative
         self.time_dependent = ronn.time_dependent
@@ -49,16 +52,18 @@ class PINN_Loss(RONN_Loss_Base):
         self.operators = self.ronn.get_operator_matrices(self.mu)
 
         if self.time_dependent:
-            self.T0_snapshots = torch.zeros((self.mu.shape[1], self.mu.shape[0]))
+            self.T0_idx = torch.arange(0, self.mu.shape[0], self.ronn.num_times)
+
+            self.T0_snapshots = torch.zeros((self.ronn.ro_dim, self.T0_idx.shape[0]))
             final_time = self.ronn.reduced_problem.T # store old final time to reset later
-            self.ronn.reduced_problem.set_final_time(reduced_problem.t0)
-            for i, mu in enumerate(self.mu):
-                self.ronn.reduced_problem.set_mu(tuple(np.array(mu)))
-                solution = torch.Tensor(reduced_problem.solve()[0].vector()).view(-1, 1)
-                self.T0_snapshots[:, i] = solution
+            self.ronn.reduced_problem.set_final_time(self.ronn.reduced_problem.t0)
+            for i, mu in enumerate(self.mu[self.T0_idx]):
+                self.ronn.reduced_problem.set_mu(tuple(np.array(mu)[1:]))
+                solution = torch.Tensor(np.array(self.ronn.reduced_problem.solve()[0].vector())).view(-1, 1)
+                self.T0_snapshots[:, [i]] = solution
             self.ronn.reduced_problem.set_final_time(final_time)
 
-            self.T0_idx = torch.arange(0, self.proj_snapshots.shape[1], self.ronn.num_times)
+
 
         if not self.normalization.initialized:
             self.normalization(self.ronn.get_projected_snapshots())
@@ -67,11 +72,12 @@ class PINN_Loss(RONN_Loss_Base):
         self.mu = mu
         self.operators_initialized = False
 
-    def _batch_jacobian(self, f, x):
-        f_sum = lambda x: torch.sum(self.normalization(f(x).T, normalize=False).T, axis=0)
+    def _batch_jacobian(self, f, x, input_normalization):
+        f_sum = lambda y: torch.sum(self.normalization(f(input_normalization(y)).T, normalize=False).T, axis=0)
         return torch.autograd.functional.jacobian(f_sum, x, create_graph=True)
 
-    def __call__(self, pred, *args, **kwargs):
+    def __call__(self, **kwargs):
+        pred = kwargs["prediction_no_snap"]
         if not self.operators_initialized:
             self._compute_operators()
 
@@ -105,31 +111,37 @@ class PINN_Loss(RONN_Loss_Base):
         if self.time_dependent:
             assert "normalized_mu" in kwargs
             normalized_mu = kwargs["normalized_mu"]
+
+            input_normalization = kwargs["input_normalization"]
             # perhaps there's a more efficient way to do this?
             # get derivative of neural net output with respect to time
 
             # this will contain all derivatives of the output with respect to time
             # with shape number of training points x reduced order dimension x 1
-            jacobian = torch.permute(self._batch_jacobian(self.ronn, normalized_mu), (1, 0, 2))[:, :, [0]]
+            jacobian = torch.permute(self._batch_jacobian(self.ronn, normalized_mu, input_normalization), (1, 0, 2))[:, :, [0]]
 
             if 'm' in self.operators:
                 res1 += torch.matmul(self.operators['m'], jacobian.double())
 
-            #initial_condition_loss = torch.mean((pred[self.T0_idx] - self.proj_snapshots.T[self.T0_idx])**2)
             initial_condition_loss = torch.mean((pred[self.T0_idx] - self.T0_snapshots.T)**2)
         else:
             initial_condition_loss = 0
 
         loss1 = torch.mean(torch.sum(res1**2, dim=1)) if type(res1) is not float else res1
         loss2 = torch.mean(torch.sum(res2**2, dim=1)) if type(res2) is not float else res2
+        if self.ronn.problem.dirichlet_bc_are_homogeneous:
+            boundary_condition_loss = 0
+        else:
+            boundary_condition_loss = torch.mean((pred[:, 0] - 1.)**2)
 
-        self.value = loss1 + loss2 + initial_condition_loss
+        self.value = loss1 + loss2 + initial_condition_loss + self.beta*boundary_condition_loss
 
         return self.value
 
     def reinitialize(self, mu):
         normalization = self.normalization
-        return PINN_Loss(self.ronn, normalization, mu)
+        beta = self.beta
+        return PINN_Loss(self.ronn, normalization, beta, mu)
 
 
 class PDNN_Loss(RONN_Loss_Base):
@@ -157,7 +169,8 @@ class PDNN_Loss(RONN_Loss_Base):
 
         self.proj_snapshots = self.normalization(self.ronn.get_projected_snapshots())
 
-    def __call__(self, pred, *args, **kwargs):
+    def __call__(self, **kwargs):
+        pred = kwargs["prediction_snap"]
         if not self.operators_initialized:
             self._compute_operators()
 
@@ -171,10 +184,11 @@ class PDNN_Loss(RONN_Loss_Base):
 
 
 class PRNN_Loss(RONN_Loss_Base):
-    def __init__(self, ronn, normalization=None, omega=1., mu=None):
+    def __init__(self, ronn, normalization=None, omega=1., beta=1., mu=None):
         super(PRNN_Loss, self).__init__(ronn, mu)
         self.omega = omega
-        self.pinn_loss = PINN_Loss(ronn, normalization, mu)
+        self.beta = beta
+        self.pinn_loss = PINN_Loss(ronn, normalization, beta, mu)
         self.pdnn_loss = PDNN_Loss(ronn, normalization, mu)
         self.value = dict()
         self.value["pinn_loss"] = None
@@ -191,11 +205,11 @@ class PRNN_Loss(RONN_Loss_Base):
     def slice_snapshots(self, start, end):
         self.pdnn_loss.slice_snapshots(start, end)
 
-    def __call__(self, pdnn_pred, pinn_pred, **kwargs):
+    def __call__(self, **kwargs):
         self.operators_initialized = True
         self.value = dict()
-        self.value["pdnn_loss"] = self.pdnn_loss(pdnn_pred, **kwargs)
-        self.value["pinn_loss"] = self.pinn_loss(pinn_pred, **kwargs)
+        self.value["pdnn_loss"] = self.pdnn_loss(**kwargs)
+        self.value["pinn_loss"] = self.pinn_loss(**kwargs)
         self.value["loss"] = self.value["pinn_loss"] + self.omega * self.value["pdnn_loss"]
 
         return self.value["loss"]
@@ -203,6 +217,7 @@ class PRNN_Loss(RONN_Loss_Base):
     def reinitialize(self, pdnn_mu, pinn_mu):
         normalization = self.pdnn_loss.normalization
         omega = self.omega
-        loss = PRNN_Loss(self.ronn, normalization, omega)
+        beta = self.beta
+        loss = PRNN_Loss(self.ronn, normalization, omega, beta)
         loss.set_mu(pdnn_mu, pinn_mu)
         return loss

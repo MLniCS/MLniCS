@@ -35,10 +35,15 @@ class RONNDataLoader:
             if num_validation > 0 and mu.shape[0] - num_validation > 0:
                 self.train_data = ronn.augment_parameters_with_time(mu[num_validation:])
                 self.val_data = ronn.augment_parameters_with_time(mu[:num_validation])
+                if self.val_data.shape[0] == 0:
+                    self.val_data = None
             elif num_validation == 0:
                 self.train_data = ronn.augment_parameters_with_time(mu)
             else:
                 raise ValueError(f"validation_proportion too large (empty training set).")
+
+            if self.train_data.shape[0] == 0:
+                self.train_data = None
 
             # now we initialize training/validation data without corresponding snapshots
             num_val_without_snaps = int(self.validation_proportion * self.num_without_snapshots)
@@ -47,10 +52,14 @@ class RONNDataLoader:
             parameter_space_subset = ParameterSpaceSubset()
             parameter_space_subset.generate(ronn.problem.mu_range, num_val_without_snaps, self.sampling)
             self.val_data_no_snaps = ronn.augment_parameters_with_time(torch.tensor(parameter_space_subset))
+            if self.val_data_no_snaps.shape[0] == 0:
+                self.val_data_no_snaps = None
 
             parameter_space_subset = ParameterSpaceSubset()
             parameter_space_subset.generate(ronn.problem.mu_range, num_train_without_snaps, self.sampling)
             self.train_data_no_snaps = ronn.augment_parameters_with_time(torch.tensor(parameter_space_subset))
+            if self.train_data_no_snaps.shape[0] == 0:
+                self.train_data_no_snaps = None
 
         return (self.train_data, self.val_data, self.train_data_no_snaps, self.val_data_no_snaps)
 
