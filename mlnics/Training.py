@@ -7,7 +7,8 @@ from mlnics.IO import save_state
 NN_FOLDER = "/nn_results"
 
 class RONNTrainer:
-    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+    def __init__(self, ronn, data, loss_fn, optimizer,
+                 lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
 
@@ -21,6 +22,7 @@ class RONNTrainer:
         self.data = data
         self.loss_fn = loss_fn
         self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
         self.input_normalization = input_normalization
         self.num_epochs = num_epochs
         self.lr = lr
@@ -108,11 +110,13 @@ class RONNTrainer:
             loss = self.loss_fn(prediction_snap=coeff_pred[:num_train_snaps],
                                 prediction_no_snap=coeff_pred[num_train_snaps:],
                                 input_normalization=self.input_normalization,
-                                normalized_mu=train[num_train_snaps:])#train_normalized[num_train_snaps:])
+                                normalized_mu=train[num_train_snaps:])
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+            if self.lr_scheduler is not None:
+                self.lr_scheduler.step()
 
             if e % self.print_every == 0:
                 self.ronn.eval()
@@ -121,7 +125,7 @@ class RONNTrainer:
                     validation_loss = loss_fn_validation(prediction_snap=pred[:num_validation_snaps],
                                                          prediction_no_snap=pred[num_validation_snaps:],
                                                          input_normalization=self.input_normalization,
-                                                         normalized_mu=validation[num_validation_snaps:])#validation_normalized[num_validation_snaps:])
+                                                         normalized_mu=validation[num_validation_snaps:])
                     if self.best_validation_loss is None or validation_loss.item() <= self.best_validation_loss:
                         self.best_validation_loss = validation_loss.item()
                         new_best = True
@@ -147,12 +151,12 @@ class RONNTrainer:
 
 
 class PDNNTrainer(RONNTrainer):
-    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+    def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
 
         super(PDNNTrainer, self).__init__(
-            ronn, data, loss_fn, optimizer=optimizer,
+            ronn, data, loss_fn, optimizer=optimizer, lr_scheduler=lr_scheduler,
             input_normalization=input_normalization, num_epochs=num_epochs, lr=lr,
             print_every=print_every, starting_epoch=starting_epoch, use_validation=use_validation
         )
@@ -166,12 +170,12 @@ class PDNNTrainer(RONNTrainer):
         return self._normalize_and_train(train_snap, validation_snap, None, None)
 
 class PINNTrainer(RONNTrainer):
-    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+    def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
 
         super(PINNTrainer, self).__init__(
-            ronn, data, loss_fn, optimizer=optimizer,
+            ronn, data, loss_fn, optimizer=optimizer, lr_scheduler=lr_scheduler,
             input_normalization=input_normalization, num_epochs=num_epochs, lr=lr,
             print_every=print_every, starting_epoch=starting_epoch, use_validation=use_validation
         )
@@ -187,12 +191,12 @@ class PINNTrainer(RONNTrainer):
 
 
 class PRNNTrainer(RONNTrainer):
-    def __init__(self, ronn, data, loss_fn, optimizer=torch.optim.Adam,
+    def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
 
         super(PRNNTrainer, self).__init__(
-            ronn, data, loss_fn, optimizer=optimizer,
+            ronn, data, loss_fn, optimizer=optimizer, lr_scheduler=lr_scheduler,
             input_normalization=input_normalization, num_epochs=num_epochs, lr=lr,
             print_every=print_every, starting_epoch=starting_epoch, use_validation=use_validation
         )

@@ -6,6 +6,7 @@ from rbnics import *
 from rbnics.utils.io.text_line import TextLine
 from mlnics.Normalization import IdentityNormalization
 from mlnics.NN import RONN
+from mlnics.Losses import PINN_Loss
 
 NN_FOLDER = "/nn_results"
 
@@ -72,25 +73,71 @@ def compute_error(ronn, pred, ro_solutions, euclidean=False, relative=True, eps=
 
     return errors
 
-def plot_error(ronn, mu, input_normalization=None, ind1=0, ind2=1, cmap="bwr"):
+def plot_error(ronn, data, mu, input_normalization=None, output_normalization=None, ind1=0, ind2=1, cmap="bwr"):
     """
     mu is not normalized and not time augmented
     """
     if input_normalization is None:
         input_normalization = IdentityNormalization()
+    if output_normalization is None:
+        output_normalization = IdentityNormalization()
 
     hf_solutions = compute_reduced_solutions(ronn.problem, mu)
     normalized_mu = input_normalization(mu)
-    pred = ronn(normalized_mu).detach().numpy()
+    pred = output_normalization(ronn(normalized_mu).T, normalize=False).detach().numpy().T
 
     coeff = ronn.get_coefficient_matrix().detach().numpy()
     errors = compute_error(ronn, (coeff @ pred.T).T, hf_solutions)
     plot = plt.scatter(mu[:, ind1], mu[:, ind2], c=errors, cmap=cmap)
+    plt.colorbar()
+    plt.scatter(data.train_data[:, ind1], data.train_data[:, ind2], color='g')
 
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/error_by_parameter.png")
 
+
     return errors, plot
+
+def get_residuals(ronn, data, mu,
+                  input_normalization=None, output_normalization=None,
+                  loss_functions=None,
+                  plot_residuals=True, ind1=0, ind2=1, cmap="bwr"):
+    """
+    mu is not normalized and not time augmented
+    """
+    assert not ronn.time_dependent
+
+    if input_normalization is None:
+        input_normalization = IdentityNormalization()
+
+    losses = []
+    if loss_functions is None:
+        loss_functions = []
+
+    for i, mu_ in enumerate(mu):
+        mu_ = mu_.reshape(1, -1)
+        normalized_mu = input_normalization(mu_)
+        if len(loss_functions) < mu.shape[0]:
+            pinn_loss = PINN_Loss(ronn, output_normalization, mu=mu_)
+            loss_functions.append(pinn_loss)
+        else:
+            pinn_loss = loss_functions[i]
+        pred = ronn(normalized_mu)
+        loss = pinn_loss(prediction_no_snap=pred).item()
+        losses.append(loss)
+
+    if plot_residuals:
+        plot = plt.scatter(mu[:, ind1], mu[:, ind2], c=losses, cmap=cmap)
+        plt.colorbar()
+        plt.scatter(data.train_data[:, ind1], data.train_data[:, ind2], color='g')
+
+        folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
+        plt.savefig(folder + "/pinn_loss_by_parameter.png")
+
+
+        return np.array(losses), plot, loss_functions
+    else:
+        return np.array(losses), None, loss_functions
 
 
 def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization, euclidean=False, relative=True, print_results=True):

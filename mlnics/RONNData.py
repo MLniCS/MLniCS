@@ -84,10 +84,10 @@ class RONNDataLoader:
         return self.train_idx
 
 
-def get_test(ronn):
+def get_new_parameters(ronn, n=100):
     """
-    Assumes that testing set has already been initialized.
     Returns: torch.tensor
     """
+    ronn.reduction_method.initialize_testing_set(n)
     mu = torch.tensor(ronn.reduction_method.testing_set)
     return mu

@@ -22,6 +22,7 @@ class RONN(nn.Module):
         """
 
         super(RONN, self).__init__()
+        self.VERBOSE = True
         self.loss_type = loss_type
 
         self.problem = problem
@@ -226,6 +227,106 @@ class RONN(nn.Module):
 
             else:
                 print(f"Operator '{term}' not implemented. Continuing without operator '{term}'...")
+
+        return operator_dict
+
+    def get_reduced_operator_matrices(self, mu=None):
+        if mu is None:
+            mu = self.mu if not self.time_dependent else self.time_augmented_mu
+
+        operator_dict = dict()
+
+        coeff = self.get_coefficient_matrix().detach().numpy()
+        inner_prod = self.get_inner_product_matrix().detach().numpy()
+        projection = (coeff @ inner_prod).T
+
+        for term in self.reduced_problem.terms:
+            # matrix terms
+            if term in ['a', 'm', 'b', 'bt']:
+                A = np.zeros((mu.shape[0], self.ro_dim, self.ro_dim))
+                num_operators = len(self.reduced_problem.operator[term])
+                operators = np.zeros((num_operators, self.ro_dim, self.ro_dim))
+                for j, Aj in enumerate(self.reduced_problem.operator[term]):
+                    if type(Aj) is ParametrizedTensorFactory:
+                        Aj = np.array(evaluate(Aj).array())
+                    else:
+                        Aj = Aj.reshape(-1)[0].content
+                    operators[j] = Aj
+
+                for i, m in enumerate(mu):
+                    self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
+                    thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1, 1)
+                    A[i] = np.sum(thetas * operators, axis=0)
+                A = torch.tensor(A).double()
+
+                operator_dict[term] = A
+
+            elif term in ['c'] and self.time_dependent:
+                assert mu.shape[0] % self.num_times == 0
+
+                C = np.zeros((mu.shape[0], self.ro_dim))
+                num_operators = len(self.problem.operator[term])
+                for n in range(self.num_times):
+                    operators = np.zeros((num_operators, self.ro_dim))
+                    self.problem.set_time(n*self.problem.dt)
+                    for j, Cj in enumerate(self.problem.operator[term]):
+                        if type(Cj) is ParametrizedTensorFactory:
+                            Cj = np.array(evaluate(Cj))
+                        else:
+                            Cj = np.array(Cj)
+                        operators[j] = np.matmul(projection, Cj.reshape(-1, 1)).reshape(-1)
+
+                    for i in range(mu.shape[0]//self.num_times):
+                        m = mu[n + i*self.num_times]
+                        self.problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
+                        thetas = np.array(self.problem.compute_theta(term)).reshape(-1, 1)
+                        C[n + i*self.num_times] = np.sum(thetas * operators, axis=0)
+                        print(m, C[n + i*self.num_times], "\n")
+
+                C = torch.tensor(C).double()[:, :, None]
+                operator_dict[term] = C
+
+            elif term in ['c']:
+                C = np.zeros((mu.shape[0], self.ro_dim))
+                num_operators = len(self.problem.operator[term])
+                operators = np.zeros((num_operators, self.ro_dim))
+                for j, Cj in enumerate(self.problem.operator[term]):
+                    if type(Cj) is ParametrizedTensorFactory:
+                        Cj = np.array(evaluate(Cj))
+                    else:
+                        Cj = np.array(Cj)
+                    operators[j] = np.matmul(projection, Cj.reshape(-1, 1)).reshape(-1)
+
+                for i, m in enumerate(mu):
+                    self.problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
+                    thetas = np.array(self.problem.compute_theta(term)).reshape(-1, 1)
+                    C[i] = np.sum(thetas * operators, axis=0)
+                C = torch.tensor(C).double()[:, :, None]
+
+                operator_dict[term] = C
+
+            elif term in ['f', 'g']:
+                C = np.zeros((mu.shape[0], self.ro_dim))
+                num_operators = len(self.reduced_problem.operator[term])
+                operators = np.zeros((num_operators, self.ro_dim))
+                for j, Cj in enumerate(self.reduced_problem.operator[term]):
+                    if type(Cj) is ParametrizedTensorFactory:
+                        Cj = np.array(evaluate(Cj))
+                    else:
+                        Cj = Cj.reshape(-1)[0].content
+                    operators[j] = Cj
+
+                for i, m in enumerate(mu):
+                    self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
+                    thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1)
+                    C[i] = np.sum(thetas * operators, axis=0)
+                C = torch.tensor(C).double()[:, :, None]
+
+                operator_dict[term] = C
+
+            else:
+                if self.VERBOSE:
+                    print(f"Operator '{term}' not implemented. Continuing without operator '{term}'...")
 
         return operator_dict
 

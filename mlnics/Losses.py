@@ -2,6 +2,14 @@ import torch
 import numpy as np
 from mlnics.Normalization import IdentityNormalization
 
+from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
+from rbnics.backends.online import OnlineFunction, OnlineVector
+from rbnics.backends.common.time_series import TimeSeries
+from rbnics.backends.dolfin.parametrized_tensor_factory import ParametrizedTensorFactory
+from rbnics.backends.dolfin.evaluate import evaluate
+
+import time
+
 class RONN_Loss_Base:
     def __init__(self, ronn, mu=None):
         self.ronn = ronn
@@ -50,6 +58,7 @@ class PINN_Loss(RONN_Loss_Base):
         self.operators_initialized = True
 
         self.operators = self.ronn.get_operator_matrices(self.mu)
+        #self.operators = self.ronn.get_reduced_operator_matrices(self.mu)
 
         if self.time_dependent:
             self.T0_idx = torch.arange(0, self.mu.shape[0], self.ronn.num_times)
@@ -90,6 +99,54 @@ class PINN_Loss(RONN_Loss_Base):
         if 'f' in self.operators:
             res1 -= self.operators['f']
         if 'c' in self.operators:
+            for i, mu in enumerate(kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False)):
+                self.ronn.reduced_problem.set_mu(tuple(np.array(mu)[self.ronn.time_dependent:]))
+                start_time = time.time()
+                if self.ronn.time_dependent:
+                    if i % self.ronn.num_times == 0:
+                        TS = TimeSeries((self.ronn.T0, self.ronn.Tf), self.ronn.dt)
+                        mu_t = self.ronn.augment_parameters_with_time(mu.view(1, -1))
+                        for j, t in enumerate(np.linspace(self.ronn.T0, self.ronn.Tf, self.ronn.num_times)):
+                            OV = OnlineVector(self.ronn.component_counts)
+                            OV.content = self.normalization(net_output, normalize=False).view(-1).detach().numpy()
+                            OF = OnlineFunction(OV)
+                            TS.append(OF)
+                        self.ronn.reduced_problem._solution_over_time = TS
+                else:
+                    net_output = pred[i].double().view(-1)
+                    OV = OnlineVector(self.ronn.component_counts)
+                    OV.content = net_output.detach().numpy()
+                    OF = OnlineFunction(OV)
+                    self.ronn.reduced_problem._solution = OF
+                end_time = time.time()
+                #print("If statement time:", end_time - start_time)
+
+                start_time = time.time()
+                operators = self.ronn.reduced_problem.assemble_operator('c')
+                end_time = time.time()
+                #print("Assembly time:", end_time - start_time)
+                start_time = time.time()
+                thetas = np.array(self.ronn.reduced_problem.compute_theta('c'))
+                end_time = time.time()
+                #print("Compute theta time:", end_time - start_time)
+
+                C = 0
+                start_time = time.time()
+                for j, Cj in enumerate(operators):
+                    if type(Cj) is ParametrizedTensorFactory:
+                        Cj = np.array(evaluate(Cj)).reshape(-1, 1)
+                    elif type(Cj) is DelayedTranspose:
+                        Cj = np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)
+                    else:
+                        Cj = Cj.reshape(-1)[0].content.reshape(-1, 1)
+
+                    C += thetas[j] * Cj
+                end_time = time.time()
+                #print("Numpyify operators time:", end_time - start_time)
+                #print("")
+                # set element of self.operators['c']
+                self.operators['c'][i] = torch.tensor(C).double()[None, :, :]
+
             res1 += self.operators['c']
         # these next two could be combined when they're both not None
         if 'a' in self.operators:
@@ -157,9 +214,13 @@ class PDNN_Loss(RONN_Loss_Base):
         return "PDNN"
 
     def slice_snapshots(self, start, end):
-        if not self.operators_initialized:
-            self._compute_operators()
+        assert not self.operators_initialized
+        self._compute_operators()
         self.proj_snapshots = self.proj_snapshots[:, start:end]
+
+    def concatenate_snapshots(self, snapshots):
+        assert self.operators_initialized
+        self.proj_snapshots = torch.cat([self.proj_snapshots, self.normalization(snapshots)], dim=1)
 
     def _compute_operators(self):
         self.operators_initialized = True
@@ -221,3 +282,58 @@ class PRNN_Loss(RONN_Loss_Base):
         loss = PRNN_Loss(self.ronn, normalization, omega, beta)
         loss.set_mu(pdnn_mu, pinn_mu)
         return loss
+
+
+
+
+""" Other losses """
+class Weighted_PDNN_Loss(RONN_Loss_Base):
+    def __init__(self, ronn, normalization=None, mu=None, epsilon=100.):
+        super(Weighted_PDNN_Loss, self).__init__(ronn, mu)
+        self.normalization = normalization
+        if self.normalization is None:
+            self.normalization = IdentityNormalization()
+
+        self.proj_snapshots = None
+        self.epsilon = epsilon
+
+    def name(self):
+        return "PDNN"
+
+    def slice_snapshots(self, start, end):
+        assert not self.operators_initialized
+        self._compute_operators()
+        self.proj_snapshots = self.proj_snapshots[:, start:end]
+
+    def concatenate_snapshots(self, snapshots):
+        assert self.operators_initialized
+        self.proj_snapshots = torch.cat([self.proj_snapshots, self.normalization(snapshots)], dim=1)
+
+    def _compute_operators(self):
+        self.operators_initialized = True
+
+        if self.normalization is None:
+            self.normalization = IdentityNormalization()
+
+        self.proj_snapshots = self.normalization(self.ronn.get_projected_snapshots())
+
+    def __call__(self, **kwargs):
+        pred = kwargs["prediction_snap"]
+        if not self.operators_initialized:
+            self._compute_operators()
+
+
+
+
+        separate_losses = torch.mean((pred.T - self.proj_snapshots)**2, dim=0)
+        weights = torch.exp(-self.epsilon * torch.cumsum(separate_losses, dim=0))
+        separate_losses[1:] *= weights[:-1]
+
+        self.value = torch.mean(separate_losses)
+
+        return self.value
+
+    def reinitialize(self, mu):
+        normalization = self.normalization
+        epsilon = self.epsilon
+        return Weighted_PDNN_Loss(self.ronn, normalization, mu, epsilon)
