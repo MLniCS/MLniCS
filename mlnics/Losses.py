@@ -8,6 +8,8 @@ from rbnics.backends.common.time_series import TimeSeries
 from rbnics.backends.dolfin.parametrized_tensor_factory import ParametrizedTensorFactory
 from rbnics.backends.dolfin.evaluate import evaluate
 
+from dolfin import assemble
+
 import time
 
 class RONN_Loss_Base:
@@ -57,8 +59,8 @@ class PINN_Loss(RONN_Loss_Base):
     def _compute_operators(self):
         self.operators_initialized = True
 
-        self.operators = self.ronn.get_operator_matrices(self.mu)
-        #self.operators = self.ronn.get_reduced_operator_matrices(self.mu)
+        #self.operators = self.ronn.get_operator_matrices(self.mu)
+        self.operators = self.ronn.get_reduced_operator_matrices(self.mu)
 
         if self.time_dependent:
             self.T0_idx = torch.arange(0, self.mu.shape[0], self.ronn.num_times)
@@ -100,7 +102,7 @@ class PINN_Loss(RONN_Loss_Base):
             res1 -= self.operators['f']
         if 'c' in self.operators:
             for i, mu in enumerate(kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False)):
-                self.ronn.reduced_problem.set_mu(tuple(np.array(mu)[self.ronn.time_dependent:]))
+                self.ronn.reduced_problem.set_mu(tuple(list(np.array(mu)[self.ronn.time_dependent:])))
                 start_time = time.time()
                 if self.ronn.time_dependent:
                     if i % self.ronn.num_times == 0:
@@ -121,27 +123,38 @@ class PINN_Loss(RONN_Loss_Base):
                 end_time = time.time()
                 #print("If statement time:", end_time - start_time)
 
-                start_time = time.time()
-                operators = self.ronn.reduced_problem.assemble_operator('c')
-                end_time = time.time()
+                #start_time = time.time()
+                Basis_Matrix = np.array([v.vector()[:] for v in self.ronn.reduced_problem.basis_functions])
+                self.ronn.problem.set_mu(tuple([e.item() for e in np.array(mu)[self.ronn.time_dependent:]]))
+                thetas = self.ronn.problem.compute_theta('c')
+                self.ronn.problem.solve()
+                self.ronn.problem._solution.vector()[:] = (Basis_Matrix.T @ pred[i].detach().numpy().reshape(-1, 1)).reshape(-1)
+                #print(self.ronn.problem.mu)
+                operator_form = self.ronn.problem.assemble_operator('c')
+                C = 0
+                for j, Cj in enumerate(operator_form):
+                    C += thetas[j] * np.array(assemble(Cj)[:]).reshape(-1, 1)
+                C = Basis_Matrix @ C
+                #operators = self.ronn.reduced_problem.assemble_operator('c')
+                #end_time = time.time()
                 #print("Assembly time:", end_time - start_time)
-                start_time = time.time()
-                thetas = np.array(self.ronn.reduced_problem.compute_theta('c'))
-                end_time = time.time()
+                #start_time = time.time()
+                #thetas = np.array(self.ronn.reduced_problem.compute_theta('c'))
+                #end_time = time.time()
                 #print("Compute theta time:", end_time - start_time)
 
-                C = 0
-                start_time = time.time()
-                for j, Cj in enumerate(operators):
-                    if type(Cj) is ParametrizedTensorFactory:
-                        Cj = np.array(evaluate(Cj)).reshape(-1, 1)
-                    elif type(Cj) is DelayedTranspose:
-                        Cj = np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)
-                    else:
-                        Cj = Cj.reshape(-1)[0].content.reshape(-1, 1)
+                #C = 0
+                #start_time = time.time()
+                #for j, Cj in enumerate(operators):
+                #    if type(Cj) is ParametrizedTensorFactory:
+                #        Cj = np.array(evaluate(Cj)).reshape(-1, 1)
+                #    elif type(Cj) is DelayedTranspose:
+                #        Cj = np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)
+                #    else:
+                #        Cj = Cj.reshape(-1)[0].content.reshape(-1, 1)
 
-                    C += thetas[j] * Cj
-                end_time = time.time()
+                #    C += thetas[j] * Cj
+                #end_time = time.time()
                 #print("Numpyify operators time:", end_time - start_time)
                 #print("")
                 # set element of self.operators['c']

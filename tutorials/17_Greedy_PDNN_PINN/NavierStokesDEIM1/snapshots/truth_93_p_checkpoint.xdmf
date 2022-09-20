@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Xdmf Version="3.0">
+  <Domain>
+    <Grid GridType="Collection" CollectionType="Temporal" Name="function">
+      <Grid Name="function_0" GridType="Uniform">
+        <Topology NumberOfElements="3091" TopologyType="Triangle" NodesPerElement="3">
+          <DataItem Dimensions="3091 3" NumberType="UInt" Format="HDF">truth_93_p_checkpoint.h5:function/function_0/mesh/topology</DataItem>
+        </Topology>
+        <Geometry GeometryType="XY">
+          <DataItem Dimensions="1639 2" Format="HDF">truth_93_p_checkpoint.h5:function/function_0/mesh/geometry</DataItem>
+        </Geometry>
+        <Time Value="0.000000" />
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="CG" ElementDegree="1" ElementCell="triangle" Name="function" Center="Other" AttributeType="Scalar">
+          <DataItem Dimensions="9273 1" NumberType="UInt" Format="HDF">truth_93_p_checkpoint.h5:function/function_0/cell_dofs</DataItem>
+          <DataItem Dimensions="1639 1" NumberType="Float" Format="HDF">truth_93_p_checkpoint.h5:function/function_0/vector</DataItem>
+          <DataItem Dimensions="3092 1" NumberType="UInt" Format="HDF">truth_93_p_checkpoint.h5:function/function_0/x_cell_dofs</DataItem>
+          <DataItem Dimensions="3091 1" NumberType="UInt" Format="HDF">truth_93_p_checkpoint.h5:function/function_0/cells</DataItem>
+        </Attribute>
+      </Grid>
+    </Grid>
+  </Domain>
+</Xdmf>

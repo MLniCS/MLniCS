@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Xdmf Version="3.0">
+  <Domain>
+    <Grid GridType="Collection" CollectionType="Temporal" Name="function_us">
+      <Grid Name="function_us_0" GridType="Uniform">
+        <Topology NumberOfElements="35" TopologyType="Triangle" NodesPerElement="3">
+          <DataItem Dimensions="35 3" NumberType="UInt" Format="HDF">auxiliary_basis_p_3_component_us_checkpoint.h5:function_us/function_us_0/mesh/topology</DataItem>
+        </Topology>
+        <Geometry GeometryType="XY">
+          <DataItem Dimensions="61 2" Format="HDF">auxiliary_basis_p_3_component_us_checkpoint.h5:function_us/function_us_0/mesh/geometry</DataItem>
+        </Geometry>
+        <Time Value="0.000000" />
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="CG" ElementDegree="2" ElementCell="triangle" Name="function_us" Center="Other" AttributeType="Vector">
+          <DataItem Dimensions="420 1" NumberType="UInt" Format="HDF">auxiliary_basis_p_3_component_us_checkpoint.h5:function_us/function_us_0/cell_dofs</DataItem>
+          <DataItem Dimensions="288 1" NumberType="Float" Format="HDF">auxiliary_basis_p_3_component_us_checkpoint.h5:function_us/function_us_0/vector</DataItem>
+          <DataItem Dimensions="36 1" NumberType="UInt" Format="HDF">auxiliary_basis_p_3_component_us_checkpoint.h5:function_us/function_us_0/x_cell_dofs</DataItem>
+          <DataItem Dimensions="35 1" NumberType="UInt" Format="HDF">auxiliary_basis_p_3_component_us_checkpoint.h5:function_us/function_us_0/cells</DataItem>
+        </Attribute>
+      </Grid>
+    </Grid>
+  </Domain>
+</Xdmf>

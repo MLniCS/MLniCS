@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 from fenics import *
 from rbnics import *
+from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
 from rbnics.backends.online import OnlineFunction, OnlineVector
 from rbnics.backends.common.time_series import TimeSeries
 from rbnics.backends.dolfin.parametrized_tensor_factory import ParametrizedTensorFactory
@@ -10,6 +11,9 @@ from rbnics.backends.dolfin.evaluate import evaluate
 from rbnics.utils.io.online_size_dict import OnlineSizeDict
 from mlnics.Normalization import IdentityNormalization
 
+import time
+
+NN_FOLDER = "/nn_results"
 
 class RONN(nn.Module):
     """
@@ -89,6 +93,9 @@ class RONN(nn.Module):
 
         self.activation = activation
 
+        self.projection = None
+        self.proj_snapshots = None
+
     def name(self):
         return self.loss_type + "_" + str(self.num_hidden) + "_" + str(self.num_neurons)
 
@@ -114,23 +121,26 @@ class RONN(nn.Module):
         return new_mu
 
     def get_projected_snapshots(self):
-        S = torch.empty((self.ro_dim, self.num_snapshots))
+        if self.proj_snapshots is None:
+            S = torch.empty((self.ro_dim, self.num_snapshots))
 
-        if self.time_dependent:
-            for i in range(0, self.num_snapshots, self.num_times):
-                self.problem.import_solution(self.problem.folder_prefix + "/snapshots", f"truth_{i//self.num_times}")
-                snapshots = np.array([
-                    s.vector() for s in self.reduced_problem.project(self.problem._solution_over_time)
-                ]).T
-                S[:, i:i+self.num_times] = torch.tensor(snapshots)
+            if self.time_dependent:
+                for i in range(0, self.num_snapshots, self.num_times):
+                    self.problem.import_solution(self.problem.folder_prefix + "/snapshots", f"truth_{i//self.num_times}")
+                    snapshots = np.array([
+                        s.vector() for s in self.reduced_problem.project(self.problem._solution_over_time)
+                    ]).T
+                    S[:, i:i+self.num_times] = torch.tensor(snapshots)
 
-        else:
-            for i in range(self.num_snapshots):
-                self.problem.import_solution(self.problem.folder_prefix + "/snapshots", f"truth_{i}")
-                snapshot = self.reduced_problem.project(self.problem._solution)
-                S[:, i] = torch.tensor(np.array(snapshot.vector()))
+            else:
+                for i in range(self.num_snapshots):
+                    self.problem.import_solution(self.problem.folder_prefix + "/snapshots", f"truth_{i}")
+                    snapshot = self.reduced_problem.project(self.problem._solution)
+                    S[:, i] = torch.tensor(np.array(snapshot.vector()))
 
-        return S.double()
+            self.proj_snapshots = S.double()
+
+        return self.proj_snapshots
 
     def get_coefficient_matrix(self):
         if self.num_components == 1:
@@ -154,12 +164,15 @@ class RONN(nn.Module):
             mu = self.mu if not self.time_dependent else self.time_augmented_mu
 
         operator_dict = dict()
-
+        start_time = time.time()
         coeff = self.get_coefficient_matrix().detach().numpy()
         inner_prod = self.get_inner_product_matrix().detach().numpy()
         projection = (coeff @ inner_prod).T
+        end_time = time.time()
+        print("Getting matrices time:", end_time - start_time)
 
         for term in self.problem.terms:
+            start_time = time.time()
             # matrix terms
             if term in ['a', 'm', 'b', 'bt']:
                 A = np.zeros((mu.shape[0], self.ro_dim, self.ro_dim))
@@ -228,6 +241,9 @@ class RONN(nn.Module):
             else:
                 print(f"Operator '{term}' not implemented. Continuing without operator '{term}'...")
 
+            end_time = time.time()
+            print("Operator:", term, "time:", end_time - start_time)
+
         return operator_dict
 
     def get_reduced_operator_matrices(self, mu=None):
@@ -236,9 +252,13 @@ class RONN(nn.Module):
 
         operator_dict = dict()
 
-        coeff = self.get_coefficient_matrix().detach().numpy()
-        inner_prod = self.get_inner_product_matrix().detach().numpy()
-        projection = (coeff @ inner_prod).T
+        if self.projection is None:
+            coeff = self.get_coefficient_matrix().detach().numpy()
+            inner_prod = self.get_inner_product_matrix().detach().numpy()
+            projection = (coeff @ inner_prod).T
+            self.projection = projection
+        else:
+            projection = self.projection
 
         for term in self.reduced_problem.terms:
             # matrix terms
@@ -249,6 +269,8 @@ class RONN(nn.Module):
                 for j, Aj in enumerate(self.reduced_problem.operator[term]):
                     if type(Aj) is ParametrizedTensorFactory:
                         Aj = np.array(evaluate(Aj).array())
+                    elif type(Aj) is DelayedTranspose:
+                        Aj = np.array([v.vector() for v in Aj._args[0]]) @ np.array(evaluate(Aj._args[1]).array()) @ np.array([v.vector() for v in Aj._args[2]]).T
                     else:
                         Aj = Aj.reshape(-1)[0].content
                     operators[j] = Aj
@@ -265,21 +287,23 @@ class RONN(nn.Module):
                 assert mu.shape[0] % self.num_times == 0
 
                 C = np.zeros((mu.shape[0], self.ro_dim))
-                num_operators = len(self.problem.operator[term])
+                num_operators = len(self.reduced_problem.operator[term])
                 for n in range(self.num_times):
                     operators = np.zeros((num_operators, self.ro_dim))
-                    self.problem.set_time(n*self.problem.dt)
-                    for j, Cj in enumerate(self.problem.operator[term]):
+                    self.reduced_problem.set_time(n*self.problem.dt)
+                    for j, Cj in enumerate(self.reduced_problem.operator[term]):
                         if type(Cj) is ParametrizedTensorFactory:
                             Cj = np.array(evaluate(Cj))
+                        elif type(Cj) is DelayedTranspose:
+                            Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
                         else:
-                            Cj = np.array(Cj)
-                        operators[j] = np.matmul(projection, Cj.reshape(-1, 1)).reshape(-1)
+                            Cj = Cj.reshape(-1)[0].content
+                        operators[j] = Cj
 
                     for i in range(mu.shape[0]//self.num_times):
                         m = mu[n + i*self.num_times]
-                        self.problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
-                        thetas = np.array(self.problem.compute_theta(term)).reshape(-1, 1)
+                        self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
+                        thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1)
                         C[n + i*self.num_times] = np.sum(thetas * operators, axis=0)
                         print(m, C[n + i*self.num_times], "\n")
 
@@ -288,18 +312,20 @@ class RONN(nn.Module):
 
             elif term in ['c']:
                 C = np.zeros((mu.shape[0], self.ro_dim))
-                num_operators = len(self.problem.operator[term])
+                num_operators = len(self.reduced_problem.operator[term])
                 operators = np.zeros((num_operators, self.ro_dim))
-                for j, Cj in enumerate(self.problem.operator[term]):
+                for j, Cj in enumerate(self.reduced_problem.operator[term]):
                     if type(Cj) is ParametrizedTensorFactory:
                         Cj = np.array(evaluate(Cj))
+                    elif type(Cj) is DelayedTranspose:
+                        Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
                     else:
-                        Cj = np.array(Cj)
-                    operators[j] = np.matmul(projection, Cj.reshape(-1, 1)).reshape(-1)
+                        Cj = Cj.reshape(-1)[0].content
+                    operators[j] = Cj
 
                 for i, m in enumerate(mu):
-                    self.problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
-                    thetas = np.array(self.problem.compute_theta(term)).reshape(-1, 1)
+                    self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
+                    thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1)
                     C[i] = np.sum(thetas * operators, axis=0)
                 C = torch.tensor(C).double()[:, :, None]
 
@@ -312,6 +338,8 @@ class RONN(nn.Module):
                 for j, Cj in enumerate(self.reduced_problem.operator[term]):
                     if type(Cj) is ParametrizedTensorFactory:
                         Cj = np.array(evaluate(Cj))
+                    elif type(Cj) is DelayedTranspose:
+                        Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
                     else:
                         Cj = Cj.reshape(-1)[0].content
                     operators[j] = Cj
@@ -357,3 +385,8 @@ class RONN(nn.Module):
             OV.content = output_normalization(net_output, normalize=False).view(-1).detach().numpy()
             OF = OnlineFunction(OV)
             return OF
+
+    def load_best_weights(self):
+        folder = self.reduction_method.folder_prefix + NN_FOLDER + "/" + self.name()
+        checkpoint = torch.load(folder + f"/checkpoint.pt")
+        self.load_state_dict(checkpoint['model_state_dict'])

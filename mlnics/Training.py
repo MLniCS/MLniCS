@@ -110,7 +110,7 @@ class RONNTrainer:
             loss = self.loss_fn(prediction_snap=coeff_pred[:num_train_snaps],
                                 prediction_no_snap=coeff_pred[num_train_snaps:],
                                 input_normalization=self.input_normalization,
-                                normalized_mu=train[num_train_snaps:])
+                                normalized_mu=train_normalized[num_train_snaps:])
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -125,7 +125,7 @@ class RONNTrainer:
                     validation_loss = loss_fn_validation(prediction_snap=pred[:num_validation_snaps],
                                                          prediction_no_snap=pred[num_validation_snaps:],
                                                          input_normalization=self.input_normalization,
-                                                         normalized_mu=validation[num_validation_snaps:])
+                                                         normalized_mu=validation_normalized[num_validation_snaps:])
                     if self.best_validation_loss is None or validation_loss.item() <= self.best_validation_loss:
                         self.best_validation_loss = validation_loss.item()
                         new_best = True
