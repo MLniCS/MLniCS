@@ -8,8 +8,6 @@ from mlnics.Normalization import IdentityNormalization
 from mlnics.NN import RONN
 from mlnics.Losses import PINN_Loss
 
-import time
-
 NN_FOLDER = "/nn_results"
 
 def compute_reduced_solutions(reduced_problem, mu):
@@ -20,15 +18,10 @@ def compute_reduced_solutions(reduced_problem, mu):
     solutions = []
 
     if "T" in dir(reduced_problem): # time dependent
-        #print(len(mu))
         for m in mu:
-            #print(tuple(np.array(m)), reduced_problem.T, reduced_problem.dt)
-            #print(reduced_problem)
             reduced_problem.set_mu(tuple(np.array(m)))
             solution = reduced_problem.solve()
-            #print(len(reduced_problem._solution_over_time), len(solution))
-            #print("")
-            for sol_t in solution:#reduced_problem._solution_over_time:
+            for sol_t in solution:
                 sol_t = np.array(sol_t.vector()).reshape(-1, 1)
                 solutions.append(sol_t)
     else:
@@ -112,7 +105,6 @@ def get_residuals(ronn, data, mu,
     """
     mu is not normalized and not time augmented
     """
-    #assert not ronn.time_dependent
 
     if input_normalization is None:
         input_normalization = IdentityNormalization()
@@ -124,22 +116,14 @@ def get_residuals(ronn, data, mu,
     for i, mu_ in enumerate(mu):
         mu_ = mu_.reshape(1, -1)
         normalized_mu = input_normalization(mu_)
-        start_time = time.time()
         if len(loss_functions) < mu.shape[0]:
             pinn_loss = PINN_Loss(ronn, output_normalization, mu=mu_)
             loss_functions.append(pinn_loss)
         else:
             pinn_loss = loss_functions[i]
-        end_time = time.time()
-        #print("Initializing loss time:", end_time - start_time)
-        start_time = time.time()
+
         pred = ronn(normalized_mu)
-        end_time = time.time()
-        #print("Computing output time:", end_time - start_time)
-        start_time = time.time()
         loss = pinn_loss(prediction_no_snap=pred, input_normalization=input_normalization, normalized_mu=normalized_mu).item()
-        end_time = time.time()
-        #print("Computing loss time:", end_time - start_time)
         losses.append(loss)
 
     if plot_residuals:

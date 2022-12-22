@@ -10,7 +10,6 @@ from rbnics.backends.dolfin.evaluate import evaluate
 
 from dolfin import assemble
 
-import time
 
 class RONN_Loss_Base:
     def __init__(self, ronn, mu=None):
@@ -39,7 +38,7 @@ class PINN_Loss(RONN_Loss_Base):
 
     RETURNS: loss function loss_fn(parameters, reduced order coefficients)
     """
-    def __init__(self, ronn, normalization=None, beta=1., mu=None):
+    def __init__(self, ronn, normalization=None, beta=1., mu=None, DEIM_func_c=None, DEIM_func_f=None):
         super(PINN_Loss, self).__init__(ronn, mu)
         self.operators = None
         self.proj_snapshots = None
@@ -53,14 +52,60 @@ class PINN_Loss(RONN_Loss_Base):
         # if time dependent, we need the neural net to compute time derivative
         self.time_dependent = ronn.time_dependent
 
+        # if DEIM being used, handle separately
+        if DEIM_func_c is not None:
+            self.nonlinearity = DEIM_func_c
+            self.using_DEIM_c = True
+        else:
+            self.nonlinearity = None
+            self.using_DEIM_c = False
+
+        if DEIM_func_f is not None:
+            self.nonlinearity_f = DEIM_func_f
+            self.using_DEIM_f = True
+        else:
+            self.nonlinearity_f = None
+            self.using_DEIM_f = False
+
     def name(self):
         return "PINN"
 
     def _compute_operators(self):
         self.operators_initialized = True
-
-        #self.operators = self.ronn.get_operator_matrices(self.mu)
         self.operators = self.ronn.get_reduced_operator_matrices(self.mu)
+        if self.using_DEIM_c:
+            self.using_DEIM_c = True
+            # make the operator for DEIM
+            num_cols = len(self.ronn.reduced_problem.operator['c'])
+            CT = np.zeros((num_cols, self.ronn.ro_dim))
+            for j, Cj in enumerate(self.ronn.reduced_problem.operator['c']):
+                if type(Cj) is ParametrizedTensorFactory:
+                    Cj = np.array(evaluate(Cj))
+                elif type(Cj) is DelayedTranspose:
+                    Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
+                else:
+                    Cj = Cj.reshape(-1)[0].content
+                CT[j] = Cj
+
+            self.operators['c'] = torch.tensor(CT.T).double()
+            selected_rows = sorted([idx[0] for idx in self.ronn.problem.DEIM_approximations['c'][0].interpolation_locations.get_dofs_list()])
+            self.basis_matrix = torch.Tensor(self.ronn.projection.T[selected_rows]).double()
+
+        if self.using_DEIM_f:
+            self.using_DEIM_f = True
+            # make the operator for DEIM
+            num_cols = len(self.ronn.reduced_problem.operator['f'])
+            CT = np.zeros((num_cols, self.ronn.ro_dim))
+            for j, Cj in enumerate(self.ronn.reduced_problem.operator['f']):
+                if type(Cj) is ParametrizedTensorFactory:
+                    Cj = np.array(evaluate(Cj))
+                elif type(Cj) is DelayedTranspose:
+                    Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
+                else:
+                    Cj = Cj.reshape(-1)[0].content
+                CT[j] = Cj
+
+            self.operators['f'] = torch.tensor(CT.T).double()
 
         if self.time_dependent:
             self.T0_idx = torch.arange(0, self.mu.shape[0], self.ronn.num_times)
@@ -99,68 +144,36 @@ class PINN_Loss(RONN_Loss_Base):
 
         # these two could be combined when both not None
         if 'f' in self.operators:
-            res1 -= self.operators['f']
+            if self.using_DEIM_f:
+                res1 -= torch.matmul(self.operators['f'],
+                            self.nonlinearity_f(
+                                kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False)
+                            )
+                        ).T[:, :, None]
+            else:
+                res1 -= self.operators['f']
         if 'c' in self.operators:
-            for i, mu in enumerate(kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False)):
-                self.ronn.reduced_problem.set_mu(tuple(list(np.array(mu)[self.ronn.time_dependent:])))
-                start_time = time.time()
-                if self.ronn.time_dependent:
-                    if i % self.ronn.num_times == 0:
-                        TS = TimeSeries((self.ronn.T0, self.ronn.Tf), self.ronn.dt)
-                        mu_t = self.ronn.augment_parameters_with_time(mu.view(1, -1))
-                        for j, t in enumerate(np.linspace(self.ronn.T0, self.ronn.Tf, self.ronn.num_times)):
-                            OV = OnlineVector(self.ronn.component_counts)
-                            OV.content = self.normalization(net_output, normalize=False).view(-1).detach().numpy()
-                            OF = OnlineFunction(OV)
-                            TS.append(OF)
-                        self.ronn.reduced_problem._solution_over_time = TS
-                else:
-                    net_output = pred[i].double().view(-1)
-                    OV = OnlineVector(self.ronn.component_counts)
-                    OV.content = net_output.detach().numpy()
-                    OF = OnlineFunction(OV)
-                    self.ronn.reduced_problem._solution = OF
-                end_time = time.time()
-                #print("If statement time:", end_time - start_time)
+            if self.using_DEIM_c:
+                tmp = torch.matmul(self.operators['c'],
+                            self.nonlinearity(
+                                torch.matmul(self.basis_matrix, pred.T.double()),
+                                kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False)
+                            )
+                        ).T[:, :, None]
+                res1 += tmp
+                #print(tmp[0])
+                #mus_here = kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False).detach()
+                #mu0 = float(mus_here[0, 0])
+                #mu1 = float(mus_here[0, 1])
+                #print(mus_here[0])
+                #print(pred[0])
+                #self.ronn.reduced_problem.set_mu((mu0, mu1))
+                #solution = self.ronn.reduced_problem.solve()
+                #print(self.ronn.reduced_problem.operator['c'] * self.ronn.reduced_problem.compute_theta('c'))
 
-                #start_time = time.time()
-                Basis_Matrix = np.array([v.vector()[:] for v in self.ronn.reduced_problem.basis_functions])
-                self.ronn.problem.set_mu(tuple([e.item() for e in np.array(mu)[self.ronn.time_dependent:]]))
-                thetas = self.ronn.problem.compute_theta('c')
-                self.ronn.problem.solve()
-                self.ronn.problem._solution.vector()[:] = (Basis_Matrix.T @ pred[i].detach().numpy().reshape(-1, 1)).reshape(-1)
-                #print(self.ronn.problem.mu)
-                operator_form = self.ronn.problem.assemble_operator('c')
-                C = 0
-                for j, Cj in enumerate(operator_form):
-                    C += thetas[j] * np.array(assemble(Cj)[:]).reshape(-1, 1)
-                C = Basis_Matrix @ C
-                #operators = self.ronn.reduced_problem.assemble_operator('c')
-                #end_time = time.time()
-                #print("Assembly time:", end_time - start_time)
-                #start_time = time.time()
-                #thetas = np.array(self.ronn.reduced_problem.compute_theta('c'))
-                #end_time = time.time()
-                #print("Compute theta time:", end_time - start_time)
-
-                #C = 0
-                #start_time = time.time()
-                #for j, Cj in enumerate(operators):
-                #    if type(Cj) is ParametrizedTensorFactory:
-                #        Cj = np.array(evaluate(Cj)).reshape(-1, 1)
-                #    elif type(Cj) is DelayedTranspose:
-                #        Cj = np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)
-                #    else:
-                #        Cj = Cj.reshape(-1)[0].content.reshape(-1, 1)
-
-                #    C += thetas[j] * Cj
-                #end_time = time.time()
-                #print("Numpyify operators time:", end_time - start_time)
-                #print("")
-                # set element of self.operators['c']
-                self.operators['c'][i] = torch.tensor(C).double()[None, :, :]
-
-            res1 += self.operators['c']
+                #print()
+            else:
+                res1 += self.operators['c']
         # these next two could be combined when they're both not None
         if 'a' in self.operators:
             res1 += torch.matmul(self.operators['a'], pred[:, :, None].double())
@@ -211,7 +224,8 @@ class PINN_Loss(RONN_Loss_Base):
     def reinitialize(self, mu):
         normalization = self.normalization
         beta = self.beta
-        return PINN_Loss(self.ronn, normalization, beta, mu)
+        nonlinearity = self.nonlinearity
+        return PINN_Loss(self.ronn, normalization, beta, mu, nonlinearity)
 
 
 class PDNN_Loss(RONN_Loss_Base):
