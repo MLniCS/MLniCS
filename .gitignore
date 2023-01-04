@@ -130,3 +130,11 @@ dmypy.json
 
 # Mac DS_Store
  .DS_Store
+
+# FEniCS
+*.h5
+*.m
+*.pvd
+*.pvtu
+*.vtu
+*.xdmf

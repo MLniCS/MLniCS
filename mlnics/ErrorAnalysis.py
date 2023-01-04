@@ -73,6 +73,7 @@ def compute_error(ronn, pred, ro_solutions, euclidean=False, relative=True, eps=
 
     return errors
 
+
 def plot_error(ronn, data, mu, input_normalization=None, output_normalization=None, ind1=0, ind2=1, cmap="bwr"):
     """
     mu is not normalized and not time augmented
@@ -97,6 +98,7 @@ def plot_error(ronn, data, mu, input_normalization=None, output_normalization=No
 
 
     return errors, plot
+
 
 def get_residuals(ronn, data, mu,
                   input_normalization=None, output_normalization=None,
@@ -166,7 +168,7 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
     ro_hf_error = compute_error(ronn, (coeff @ ro_solutions.T).T, hf_solutions, euclidean=euclidean, relative=relative)
 
     if print_results:
-        print(TextLine("N = "+str(ronn.ro_dim), fill="#"))
+        print(TextLine(ronn.loss_type+" N = "+str(ronn.ro_dim), fill="#"))
         print(f"ERROR\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
         print(f"min\t{np.min(nn_hf_error)}\t{np.min(nn_ro_error)}\t{np.min(ro_hf_error)}")
         print(f"mean\t{np.mean(nn_hf_error)}\t{np.mean(nn_ro_error)}\t{np.mean(ro_hf_error)}")
@@ -174,7 +176,6 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
 
     # perhaps return the solutions too so that they don't have to be computed every time this is called
     return nn_hf_error, nn_ro_error, ro_hf_error
-
 
 
 def error_analysis_by_network(nets, mu, input_normalizations, output_normalizations, euclidean=False, relative=True):
@@ -190,7 +191,7 @@ def error_analysis_by_network(nets, mu, input_normalizations, output_normalizati
         output_normalization = output_normalizations[net_name]
         if i == 0:
             if relative:
-                print(f"Mean Relative Error for {net.ro_dim} Basis Functions")
+                print(f"Mean Relative Error for N = {net.ro_dim} Basis Functions")
             else:
                 print(f"Mean Error for {net.ro_dim} Basis Functions")
             print("Network\t\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
@@ -202,6 +203,7 @@ def error_analysis_by_network(nets, mu, input_normalizations, output_normalizati
         print(f"{net_name}\t{np.mean(nn_hf_error)}\t{np.mean(nn_ro_error)}\t{np.mean(ro_hf_error)}")
 
     print(85*"#")
+
 
 def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, activation=torch.tanh):
 
@@ -220,11 +222,45 @@ def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, act
         # print error for given dim ?
         pass
 
-
-
     raise NotImplementedError()
 
-def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=0, colorbar=False, component=-1):
+
+def plot_solution(ronn, mu, input_normalization=None, output_normalization=None, t=0, colorbar=True, component=-1):
+    """
+    mu is a tuple.
+    t is an int.
+    component is a str.
+    """
+    problem = ronn.problem
+
+    mu_nn = torch.tensor(mu)
+    problem.set_mu(mu)
+    problem.solve()
+
+    if not ronn.time_dependent:
+        if component != -1:
+            P = plot(problem._solution, component=component)
+            if colorbar:
+                plt.colorbar(P)
+        else:
+            P = plot(problem._solution)
+            if colorbar:
+                plt.colorbar(P)
+    else:
+        if component != -1:
+            P = plot(problem._solution_over_time[t], component=component)
+            if colorbar:
+                plt.colorbar(P)
+        else:
+            P = plot(problem._solution_over_time[t])
+            if colorbar:
+                plt.colorbar(P)
+
+    folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
+    plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution.png")
+
+
+def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=0, colorbar=True, component=-1):
     """
     mu is a tuple.
     t is an int.

@@ -1,1 +1,0 @@
-ComponentNameToBasisComponentIndexDict([('u', 0)])

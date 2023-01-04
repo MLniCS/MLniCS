@@ -133,9 +133,9 @@ class RONNTrainer:
                         new_best = False
 
                     self.validation_losses.append(loss_fn_validation.value)
-                    print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
+                    print(e, f"\tLoss(training) = {loss.item()}", f"\tLoss(validation) = {validation_loss.item()}")
                 else:
-                    print(e, loss.item())
+                    print(e, f"\tLoss(training) = {loss.item()}")
 
                 self.train_losses.append(self.loss_fn.value)
                 self.epochs.append(e)
@@ -257,15 +257,15 @@ def plot_loss(trainer, ronn, separate=False):
         ax = fig.add_subplot(1, 1, 1)
 
         if type(train_losses) is not dict:
-            ax.semilogy(epochs, train_losses, label="Train Loss")
+            ax.semilogy(epochs, train_losses, linestyle='dashed', label="Train Loss")
             if validation_losses is not None and np.size(validation_losses) > 0:
-                ax.plot(epochs, validation_losses, label="Validation Loss")
+                ax.plot(epochs, validation_losses, linestyle='solid', label="Validation Loss")
                 ax.legend()
         else:
             for key in train_losses:
-                ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
+                ax.semilogy(epochs, train_losses[key], linestyle='dashed', label=f"Train Loss ({key})")
                 if validation_losses is not None and len(validation_losses) > 0:
-                    ax.semilogy(epochs, validation_losses[key], label=f"Validation Loss ({key})")
+                    ax.semilogy(epochs, validation_losses[key], linestyle='solid', label=f"Validation Loss ({key})")
                     ax.legend()
 
         ax.set_title(ronn.name())
@@ -275,20 +275,20 @@ def plot_loss(trainer, ronn, separate=False):
         if type(train_losses) is not dict:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
-            ax.semilogy(epochs, train_losses, label="Train Loss")
+            ax.semilogy(epochs, train_losses, linestyle='dashed', label="Train Loss")
 
             if validation_losses is not None and np.size(validation_losses) > 0:
                 fig = plt.figure()
                 ax = fig.add_subplot(1, 1, 1)
-                ax.semilogy(epochs, validation_losses, label="Validation Loss")
+                ax.semilogy(epochs, validation_losses, linestyle='solid', label="Validation Loss")
         else:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
             for key in train_losses:
-                ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
+                ax.semilogy(epochs, train_losses[key], linestyle='dashed', label=f"Train Loss ({key})")
 
                 if validation_losses is not None and len(validation_losses) > 0:
-                    ax.semilogy(epochs, validation_losses[key], label=f"Validation Loss ({key})")
+                    ax.semilogy(epochs, validation_losses[key], linestyle='solid', label=f"Validation Loss ({key})")
 
         ax.set_title(ronn.name())
         ax.set_xlabel("Epoch")
