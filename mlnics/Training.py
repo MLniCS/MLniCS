@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mlnics.Normalization import IdentityNormalization
 from mlnics.IO import save_state
+from tqdm import tqdm
 
 NN_FOLDER = "/nn_results"
 
@@ -145,7 +146,9 @@ class RONNTrainer:
         new_best = False
 
         self.optimizer.zero_grad()
-        for e in range(starting_epoch, starting_epoch + self.num_epochs):
+        loop = range(starting_epoch, starting_epoch + self.num_epochs)
+        # loop = tqdm(range(starting_epoch, starting_epoch + self.num_epochs))
+        for e in loop:
             coeff_pred = self.ronn(train_normalized)
             loss = self.loss_fn(prediction_snap=coeff_pred[:num_train_snaps],
                                 prediction_no_snap=coeff_pred[num_train_snaps:],
@@ -158,6 +161,7 @@ class RONNTrainer:
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
 
+            # loop.set_description(f"Epoch [{e}/{starting_epoch + self.num_epochs}]")
             if e % self.print_every == 0:
                 self.ronn.eval()
                 if validation is not None and self.use_validation:
@@ -174,8 +178,10 @@ class RONNTrainer:
 
                     self.validation_losses.append(loss_fn_validation.value)
                     print(e, f"\tLoss(training) = {loss.item()}", f"\tLoss(validation) = {validation_loss.item()}")
+                    # loop.set_postfix({"Loss(training)": loss.item()}, {"Loss(validation)": validation_loss.item()})
                 else:
                     print(e, f"\tLoss(training) = {loss.item()}")
+                    # loop.set_postfix({"Loss(training)": loss.item()})
 
                 self.train_losses.append(self.loss_fn.value)
                 self.epochs.append(e)

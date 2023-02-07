@@ -232,7 +232,6 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
 
     Returns:
     - tuple of arrays: Three arrays containing errors of neural network compared to high-fidelity, neural network compared to reduced order, and reduced order compared to high-fidelity, respectively.
-
     """
 
     # get neural network predictions
@@ -341,29 +340,24 @@ def plot_solution(ronn, mu, input_normalization=None, output_normalization=None,
     """
     problem = ronn.problem
 
-    mu_nn = torch.tensor(mu)
     problem.set_mu(mu)
     problem.solve()
 
     if not ronn.time_dependent:
         if component != -1:
             P = plot(problem._solution, component=component)
-            if colorbar:
-                plt.colorbar(P)
         else:
             P = plot(problem._solution)
-            if colorbar:
-                plt.colorbar(P)
     else:
         if component != -1:
             P = plot(problem._solution_over_time[t], component=component)
-            if colorbar:
-                plt.colorbar(P)
         else:
             P = plot(problem._solution_over_time[t])
-            if colorbar:
-                plt.colorbar(P)
 
+    if colorbar:
+        plt.colorbar(P)
+
+    plt.title("Solution field at $\mu$ = "+str(tuple(round(i, 2) for i in mu)))
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution.png")
 
@@ -393,7 +387,7 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
     reduced_problem = ronn.reduced_problem
     V = problem.V
 
-    mu_nn = torch.tensor(mu)
+    mu_nn = torch.tensor(mu).to(dtype=torch.float32)
     nn_solution = ronn.solve(mu_nn, input_normalization, output_normalization)
     problem.set_mu(mu)
     problem.solve()
@@ -406,8 +400,6 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution, V
                     ), component=component
             )
-            if colorbar:
-                plt.colorbar(P)
         else:
             P = plot(
                     project(
@@ -415,8 +407,6 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution, V
                     )
             )
-            if colorbar:
-                plt.colorbar(P)
     else:
         if component != -1:
             P = plot(
@@ -425,8 +415,6 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution[t], V
                     ), component=component
             )
-            if colorbar:
-                plt.colorbar(P)
         else:
             P = plot(
                     project(
@@ -434,8 +422,10 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution[t], V
                     )
             )
-            if colorbar:
-                plt.colorbar(P)
 
+    if colorbar:
+        plt.colorbar(P)
+
+    plt.title("Solution difference at $\mu$ = "+str(tuple(round(i, 2) for i in mu)))
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution_difference.png")
