@@ -146,8 +146,8 @@ class RONNTrainer:
         new_best = False
 
         self.optimizer.zero_grad()
-        loop = range(starting_epoch, starting_epoch + self.num_epochs)
-        # loop = tqdm(range(starting_epoch, starting_epoch + self.num_epochs))
+        # loop = range(starting_epoch, starting_epoch + self.num_epochs)
+        loop = tqdm(range(starting_epoch, starting_epoch + self.num_epochs))
         for e in loop:
             coeff_pred = self.ronn(train_normalized)
             loss = self.loss_fn(prediction_snap=coeff_pred[:num_train_snaps],
@@ -177,11 +177,11 @@ class RONNTrainer:
                         new_best = False
 
                     self.validation_losses.append(loss_fn_validation.value)
-                    print(e, f"\tLoss(training) = {loss.item()}", f"\tLoss(validation) = {validation_loss.item()}")
-                    # loop.set_postfix({"Loss(training)": loss.item()}, {"Loss(validation)": validation_loss.item()})
+                    # print(e, f"\tLoss(training) = {loss.item()}", f"\tLoss(validation) = {validation_loss.item()}")
+                    loop.set_postfix({"Loss(training)": loss.item()}, {"Loss(validation)": validation_loss.item()})
                 else:
-                    print(e, f"\tLoss(training) = {loss.item()}")
-                    # loop.set_postfix({"Loss(training)": loss.item()})
+                    # print(e, f"\tLoss(training) = {loss.item()}")
+                    loop.set_postfix({"Loss(training)": loss.item()})
 
                 self.train_losses.append(self.loss_fn.value)
                 self.epochs.append(e)
