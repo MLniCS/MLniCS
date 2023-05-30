@@ -322,7 +322,7 @@ def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, act
     raise NotImplementedError()
 
 
-def plot_solution(ronn, mu, input_normalization=None, output_normalization=None, t=0, colorbar=True, component=-1):
+def plot_solution(ronn, mu, input_normalization=None, output_normalization=None, t=-1, colorbar=True, component=-1):
     """
     Plots the solution of a reduced order neural network model.
 
@@ -362,7 +362,7 @@ def plot_solution(ronn, mu, input_normalization=None, output_normalization=None,
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution.png")
 
 
-def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=0, colorbar=True, component=-1):
+def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=-1, colorbar=True, component=-1):
     """
     Plot the difference between the solution of the original problem and the reduced neural network solution.
     
