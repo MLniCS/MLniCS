@@ -3,10 +3,51 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mlnics.Normalization import IdentityNormalization
 from mlnics.IO import save_state
+from tqdm import tqdm
 
 NN_FOLDER = "/nn_results"
 
 class RONNTrainer:
+    """
+    The RONNTrainer class is a base class for training Reduced Order Nonlinear Networks (RONNs).
+    It contains the essential methods for training a RONN with a specified loss function and optimizer,
+    and also includes optional components such as a learning rate scheduler and input normalization.
+    The class tracks the progress of training by storing the train and validation losses and epochs.
+
+    Parameters:
+    ronn (ronn): A RONN model to be trained
+    data (tuple): Tuple containing training and validation datasets
+    loss_fn (ronn.loss_functions.LossFunction): Loss function for training the RONN
+    optimizer (torch.optim.Optimizer): Optimizer for updating the RONN parameters
+    lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): Learning rate scheduler for reducing the learning rate
+    input_normalization (ronn.normalization.Normalization, optional): Normalization for input data
+    num_epochs (int, optional): Number of epochs for training the RONN. Default is 10000.
+    lr (float, optional): Learning rate for the optimizer. Default is 1e-3.
+    print_every (int, optional): Number of epochs after which the loss is printed. Default is 100.
+    starting_epoch (int, optional): Starting epoch number for continuing training from a previous checkpoint. Default is 0.
+    use_validation (bool, optional): Flag for using validation data. Default is True.
+
+    Attributes:
+    ronn (ronn): A RONN model to be trained
+    data (tuple): Tuple containing training and validation datasets
+    loss_fn (ronn.loss_functions.LossFunction): Loss function for training the RONN
+    optimizer (torch.optim.Optimizer): Optimizer for updating the RONN parameters
+    lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): Learning rate scheduler for reducing the learning rate
+    input_normalization (ronn.normalization.Normalization, optional): Normalization for input data
+    num_epochs (int, optional): Number of epochs for training the RONN
+    lr (float, optional): Learning rate for the optimizer
+    print_every (int, optional): Number of epochs after which the loss is printed
+    use_validation (bool, optional): Flag for using validation data
+    best_validation_loss (float, optional): Best validation loss so far
+    train_losses (list of float): List of training losses at each epoch
+    validation_losses (list of float): List of validation losses at each epoch
+    epochs (list of int): List of epoch numbers
+
+    Methods:
+    train (): Raises NotImplementedError as the base class does not implement the training method.
+    _normalize_and_train (): Performs the normalization of the input data and trains the RONN using the specified loss function and optimizer.
+    """
+
     def __init__(self, ronn, data, loss_fn, optimizer,
                  lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
@@ -105,7 +146,9 @@ class RONNTrainer:
         new_best = False
 
         self.optimizer.zero_grad()
-        for e in range(starting_epoch, starting_epoch + self.num_epochs):
+        # loop = range(starting_epoch, starting_epoch + self.num_epochs)
+        loop = tqdm(range(starting_epoch, starting_epoch + self.num_epochs))
+        for e in loop:
             coeff_pred = self.ronn(train_normalized)
             loss = self.loss_fn(prediction_snap=coeff_pred[:num_train_snaps],
                                 prediction_no_snap=coeff_pred[num_train_snaps:],
@@ -118,6 +161,7 @@ class RONNTrainer:
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
 
+            # loop.set_description(f"Epoch [{e}/{starting_epoch + self.num_epochs}]")
             if e % self.print_every == 0:
                 self.ronn.eval()
                 if validation is not None and self.use_validation:
@@ -133,9 +177,11 @@ class RONNTrainer:
                         new_best = False
 
                     self.validation_losses.append(loss_fn_validation.value)
-                    print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
+                    # print(e, f"\tLoss(training) = {loss.item()}", f"\tLoss(validation) = {validation_loss.item()}")
+                    loop.set_postfix({"Loss(training)": loss.item()}, {"Loss(validation)": validation_loss.item()})
                 else:
-                    print(e, loss.item())
+                    # print(e, f"\tLoss(training) = {loss.item()}")
+                    loop.set_postfix({"Loss(training)": loss.item()})
 
                 self.train_losses.append(self.loss_fn.value)
                 self.epochs.append(e)
@@ -151,6 +197,33 @@ class RONNTrainer:
 
 
 class PDNNTrainer(RONNTrainer):
+    """
+    PDNNTrainer
+
+    This class is a child class of the RONNTrainer class. It is used to train a
+    RONN (Radial Overlap Neural Network) for prediction of chemical properties using
+    the PDNN (Predictive Deep Neural Network) training method.
+
+    The class provides a train method which trains the RONN model using the PDNN method.
+
+    Parameters:
+
+    ronn (RONN): The RONN model to be trained.
+    data (Data): The data to be used for training.
+    loss_fn (function): The loss function to be used for training.
+    optimizer (function): The optimizer function to be used for training.
+    lr_scheduler (function, optional): The learning rate scheduler to be used. Defaults to None.
+    input_normalization (function, optional): The input normalization function to be used. Defaults to None.
+    num_epochs (int, optional): The number of training epochs. Defaults to 10000.
+    lr (float, optional): The learning rate. Defaults to 1e-3.
+    print_every (int, optional): The number of epochs after which training progress is printed. Defaults to 100.
+    starting_epoch (int, optional): The starting epoch number. Defaults to 0.
+    use_validation (bool, optional): Whether to use validation set during training. Defaults to True.
+
+    Methods:
+    train(): Trains the RONN model using the PDNN method. Returns the training and validation results.
+    """
+
     def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
@@ -169,7 +242,35 @@ class PDNNTrainer(RONNTrainer):
         train_snap, validation_snap, _, _ = self.data.train_validation_split()
         return self._normalize_and_train(train_snap, validation_snap, None, None)
 
+
 class PINNTrainer(RONNTrainer):
+    """
+    PINNTrainer
+
+    This class is a child class of the RONNTrainer class. It is used to train a
+    RONN (Radial Overlap Neural Network) for prediction of chemical properties using
+    the PINN (Predictive Neural Network) training method.
+
+    The class provides a train method which trains the RONN model using the PINN method.
+
+    Parameters:
+
+    ronn (RONN): The RONN model to be trained.
+    data (Data): The data to be used for training.
+    loss_fn (function): The loss function to be used for training.
+    optimizer (function): The optimizer function to be used for training.
+    lr_scheduler (function, optional): The learning rate scheduler to be used. Defaults to None.
+    input_normalization (function, optional): The input normalization function to be used. Defaults to None.
+    num_epochs (int, optional): The number of training epochs. Defaults to 10000.
+    lr (float, optional): The learning rate. Defaults to 1e-3.
+    print_every (int, optional): The number of epochs after which training progress is printed. Defaults to 100.
+    starting_epoch (int, optional): The starting epoch number. Defaults to 0.
+    use_validation (bool, optional): Whether to use validation set during training. Defaults to True.
+
+    Methods:
+    train(): Trains the RONN model using the PINN method. Returns the training and validation results.
+    """
+
     def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
@@ -189,8 +290,38 @@ class PINNTrainer(RONNTrainer):
         return self._normalize_and_train(None, None, train_no_snap, validation_no_snap)
 
 
-
 class PRNNTrainer(RONNTrainer):
+    """
+    Class PRNNTrainer
+
+    A class that extends `RONNTrainer` and trains a `PRNN` model.
+
+    Attributes:
+        ronn (RONN): The RONN model to be trained.
+        data (object): The data to be used for training.
+        loss_fn (function): The loss function to be used for training.
+        optimizer (torch.optim.Optimizer): The optimizer to be used for training.
+        lr_scheduler (torch.optim.lr_scheduler, optional): The learning rate scheduler to be used for training. Defaults to None.
+        input_normalization (callable, optional): The input normalization function to be used for training. Defaults to None.
+        num_epochs (int, optional): The number of epochs for training. Defaults to 10000.
+        lr (float, optional): The learning rate for the optimizer. Defaults to 1e-3.
+        print_every (int, optional): The interval for printing training loss. Defaults to 100.
+        starting_epoch (int, optional): The starting epoch number. Defaults to 0.
+        use_validation (bool, optional): Whether to use validation during training. Defaults to True.
+
+    Methods:
+        train(): Function that gets training and validation sets to pass to _normalize_and_train which then performs the training.
+
+    Function plot_loss
+
+    Plots the loss curve for a given `PRNNTrainer` object.
+
+    Args:
+        trainer (PRNNTrainer): The PRNNTrainer object for which the loss curve is to be plotted.
+        ronn (RONN): The RONN model used in the trainer.
+        separate (bool, optional): Whether to plot train and validation losses on separate plots. Defaults to False.
+    """
+
     def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
@@ -257,15 +388,15 @@ def plot_loss(trainer, ronn, separate=False):
         ax = fig.add_subplot(1, 1, 1)
 
         if type(train_losses) is not dict:
-            ax.semilogy(epochs, train_losses, label="Train Loss")
+            ax.semilogy(epochs, train_losses, linestyle='dashed', label="Train Loss")
             if validation_losses is not None and np.size(validation_losses) > 0:
-                ax.plot(epochs, validation_losses, label="Validation Loss")
+                ax.plot(epochs, validation_losses, linestyle='solid', label="Validation Loss")
                 ax.legend()
         else:
             for key in train_losses:
-                ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
+                ax.semilogy(epochs, train_losses[key], linestyle='dashed', label=f"Train Loss ({key})")
                 if validation_losses is not None and len(validation_losses) > 0:
-                    ax.semilogy(epochs, validation_losses[key], label=f"Validation Loss ({key})")
+                    ax.semilogy(epochs, validation_losses[key], linestyle='solid', label=f"Validation Loss ({key})")
                     ax.legend()
 
         ax.set_title(ronn.name())
@@ -275,20 +406,20 @@ def plot_loss(trainer, ronn, separate=False):
         if type(train_losses) is not dict:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
-            ax.semilogy(epochs, train_losses, label="Train Loss")
+            ax.semilogy(epochs, train_losses, linestyle='dashed', label="Train Loss")
 
             if validation_losses is not None and np.size(validation_losses) > 0:
                 fig = plt.figure()
                 ax = fig.add_subplot(1, 1, 1)
-                ax.semilogy(epochs, validation_losses, label="Validation Loss")
+                ax.semilogy(epochs, validation_losses, linestyle='solid', label="Validation Loss")
         else:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
             for key in train_losses:
-                ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
+                ax.semilogy(epochs, train_losses[key], linestyle='dashed', label=f"Train Loss ({key})")
 
                 if validation_losses is not None and len(validation_losses) > 0:
-                    ax.semilogy(epochs, validation_losses[key], label=f"Validation Loss ({key})")
+                    ax.semilogy(epochs, validation_losses[key], linestyle='solid', label=f"Validation Loss ({key})")
 
         ax.set_title(ronn.name())
         ax.set_xlabel("Epoch")

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from fenics import *
+from dolfin import *
 from rbnics import *
 from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
 from rbnics.backends.online import OnlineFunction, OnlineVector
@@ -17,8 +17,51 @@ NN_FOLDER = "/nn_results"
 
 class RONN(nn.Module):
     """
-    Reduced Order Neural Network
+    RONN (Reduced Order Neural Network) Class
+
+    This class is a reduced order model that uses a neural network to map the high-dimensional parameters to the low-dimensional reduced order coefficients. It inherits from PyTorch's nn.Module class.
+
+    Args:
+    loss_type (str): Type of loss function used for training the neural network.
+    problem (object): Problem instance for which the reduced order model is being created.
+    reduction_method (object): Reduction method used for reducing the high-dimensional model to the low-dimensional reduced order model.
+    n_hidden (int, optional): Number of hidden layers in the neural network. Defaults to 2.
+    n_neurons (int, optional): Number of neurons in each hidden layer. Defaults to 100.
+    activation (function, optional): Activation function used in each hidden layer. Defaults to torch.tanh.
+
+    Attributes:
+    VERBOSE (bool): Boolean flag to indicate if verbose output is desired.
+    loss_type (str): Type of loss function used for training the neural network.
+    problem (object): Problem instance for which the reduced order model is being created.
+    reduction_method (object): Reduction method used for reducing the high-dimensional model to the low-dimensional reduced order model.
+    reduced_problem (object): Reduced problem instance.
+    mu (torch.tensor): Tensor of parameters used for training the neural network.
+    space_dim (int): Dimension of the high-fidelity space.
+    num_components (int): Number of components in the solution of the problem.
+    ro_dim (int): Dimension of the reduced order space.
+    component_counts (dict or OnlineSizeDict): Dictionary mapping each component to its count in the reduced order space.
+    num_params (int): Number of parameters in the model.
+    num_times (int): Number of times in the time-dependent problem.
+    time_dependent (bool): Boolean flag to indicate if the problem is time-dependent.
+    Tf (float): Final time in the time-dependent problem.
+    T0 (float): Initial time in the time-dependent problem.
+    dt (float): Time step in the time-dependent problem.
+    time_augmented_mu (torch.tensor): Tensor of parameters used for training the neural network, augmented with time in the case of a time-dependent problem.
+    num_snapshots (int): Number of snapshots in the training set.
+    num_hidden (int): Number of hidden layers in the neural network.
+    num_neurons (int): Number of neurons in each hidden layer.
+    layers (nn.ModuleList): List of nn.Linear layers in the neural network.
+    activation (function): Activation function used in each hidden layer.
+    projection (None or nn.Linear): Linear layer used for projecting the reduced order coefficients back to the high-fidelity space.
+    proj_snapshots (None or torch.tensor): Tensor of high-fidelity snapshots projected from the reduced order coefficients.
+
+    Methods:
+    forward(mu): Map the input parameter mu to the reduced order coefficient.
+    name(): Return the name of the reduced order model.
+    augment_parameters_with_time(mu): Augment the input parameter mu with time in the case of a time-dependent problem.
+    get_projected_snap
     """
+
     def __init__(self, loss_type, problem, reduction_method, n_hidden=2, n_neurons=100, activation=torch.tanh):
         """
         REQUIRES:
@@ -97,7 +140,7 @@ class RONN(nn.Module):
         self.proj_snapshots = None
 
     def name(self):
-        return self.loss_type + "_" + str(self.num_hidden) + "_" + str(self.num_neurons)
+        return self.loss_type + "_" + str(self.num_hidden) + "_hidden_layers_" + str(self.num_neurons) + "_neurons"
 
     def forward(self, mu):
         """

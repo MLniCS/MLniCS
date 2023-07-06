@@ -1,3 +1,4 @@
 NavierStokesDEIM*
 NavierStokesExact*
 NavierStokesTensor3_*
+.gitignore
