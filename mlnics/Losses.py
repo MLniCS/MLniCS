@@ -4,7 +4,6 @@ import copy
 from mlnics.Normalization import IdentityNormalization
 
 from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
-from rbnics.backends.common.time_series import TimeSeries
 from rbnics.backends.dolfin.parametrized_tensor_factory import ParametrizedTensorFactory
 #from rbnics.backends.dolfin.evaluate import evaluate
 from rbnics.backends import evaluate, transpose
