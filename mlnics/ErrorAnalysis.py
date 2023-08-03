@@ -98,6 +98,7 @@ def compute_error(ronn, pred, ro_solutions, euclidean=False, relative=True, eps=
 
     return errors
 
+
 def plot_error(ronn, data, mu, input_normalization=None, output_normalization=None, ind1=0, ind2=1, cmap="bwr"):
     """
     Plots the error of the reduced order neural network (ronn) predictions using data, mu and a specified color map.
@@ -124,6 +125,7 @@ def plot_error(ronn, data, mu, input_normalization=None, output_normalization=No
     Note:
     mu is not normalized and not time augmented.
     """
+
     if input_normalization is None:
         input_normalization = IdentityNormalization()
     if output_normalization is None:
@@ -144,6 +146,7 @@ def plot_error(ronn, data, mu, input_normalization=None, output_normalization=No
 
 
     return errors, plot
+
 
 def get_residuals(ronn, data, mu,
                   input_normalization=None, output_normalization=None,
@@ -272,7 +275,6 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
     return nn_hf_error, nn_ro_error, ro_hf_error
 
 
-
 def error_analysis_by_network(nets, mu, input_normalizations, output_normalizations, euclidean=False, relative=True):
     """
     This function calculates the error of the neural network `ronn` on the test set `mu` (not time augmented). 
@@ -309,6 +311,7 @@ def error_analysis_by_network(nets, mu, input_normalizations, output_normalizati
 
     print(85*"#")
 
+
 def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, activation=torch.tanh):
 
     max_dim = ronn.ro_dim
@@ -326,9 +329,8 @@ def error_analysis(ronn, mu, input_normalization, n_hidden=2, n_neurons=100, act
         # print error for given dim ?
         pass
 
-
-
     raise NotImplementedError()
+
 
 def plot_solution(ronn, mu, input_normalization=None, output_normalization=None, t=-1, colorbar=True, component=-1):
     """
@@ -369,7 +371,7 @@ def plot_solution(ronn, mu, input_normalization=None, output_normalization=None,
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution.png")
 
-def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=0, colorbar=False, component=-1):
+def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=-1, colorbar=True, component=-1):
     """
     Plot the difference between the solution of the original problem and the reduced neural network solution.
     
@@ -389,6 +391,7 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
     component : int, optional
     The component of the solution to be plotted, by default -1 (all components)
     """
+
     problem = ronn.problem
     reduced_problem = ronn.reduced_problem
     V = problem.V
@@ -406,8 +409,6 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution, V
                     ), component=component
             )
-            if colorbar:
-                plt.colorbar(P)
         else:
             P = plot(
                     project(
@@ -415,8 +416,6 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution, V
                     )
             )
-            if colorbar:
-                plt.colorbar(P)
     else:
         if component != -1:
             P = plot(
@@ -425,8 +424,6 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution[t], V
                     ), component=component
             )
-            if colorbar:
-                plt.colorbar(P)
         else:
             P = plot(
                     project(
@@ -434,8 +431,11 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
                             - reduced_problem.basis_functions * nn_solution[t], V
                     )
             )
-            if colorbar:
-                plt.colorbar(P)
+
+    if colorbar:
+        plt.colorbar(P)
+
+    plt.title("Solution difference at $\mu$ = "+str(tuple(round(i, 2) for i in mu)))
 
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution_difference.png")
