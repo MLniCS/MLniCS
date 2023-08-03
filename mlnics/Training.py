@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mlnics.Normalization import IdentityNormalization
 from mlnics.IO import save_state
+from tqdm import tqdm
 
 NN_FOLDER = "/nn_results"
 
