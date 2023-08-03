@@ -395,7 +395,7 @@ def plot_loss(trainer, ronn, separate=False):
         if type(train_losses) is not dict:
             ax.semilogy(epochs, train_losses, linestyle='dashed', label="Train Loss")
             if validation_losses is not None and np.size(validation_losses) > 0:
-                ax.plot(epochs, validation_losses, label="Validation Loss")
+                ax.plot(epochs, validation_losses, linestyle='solid', label="Validation Loss")
                 ax.legend()
         else:
             for key in train_losses:
