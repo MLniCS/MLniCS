@@ -14,6 +14,46 @@ from dolfin import assemble
 
 
 class RONN_Loss_Base:
+    """
+    RONN_Loss_Base
+
+    This is the base class for all RONN loss functions. It contains common functionality for all RONN losses.
+
+    Parameters
+
+    ronn : object
+    An instance of the RONN class that has been pre-trained on a dataset.
+    mu : float, optional
+    A hyperparameter for the loss function (default is None).
+
+    Attributes
+
+    ronn : object
+    An instance of the RONN class that has been pre-trained on a dataset.
+    operators_initialized : bool
+    A flag indicating whether the RONN operators have been initialized.
+    mu : float
+    A hyperparameter for the loss function.
+    value : float
+    The value of the loss function.
+
+    Methods
+
+    name()
+    Returns the name of the RONN loss function.
+    set_mu(mu)
+    Sets the value of the mu hyperparameter.
+    slice_snapshots(start, end)
+    Slices the RONN snapshots for a given range.
+    call(pred, kwargs)
+    Returns the value of the loss function for a given prediction.
+
+    Raises
+
+    NotImplementedError
+    If the call method is called on an instance of the RONN_Loss_Base class without being implemented by a subclass.
+    """
+
     def __init__(self, ronn, mu=None):
         self.ronn = ronn
         self.operators_initialized = False
@@ -34,12 +74,27 @@ class RONN_Loss_Base:
 
 class PINN_Loss(RONN_Loss_Base):
     """
-    PINN_Loss
+    Class PINN_Loss
 
-    ronn: object of type RONN
+    This class defines the PINN loss function used for training neural networks with the RONN method.
 
-    RETURNS: loss function loss_fn(parameters, reduced order coefficients)
+    Attributes:
+    ronn (object): an object of type RONN, representing the reduced order model.
+    normalization (optional): an object for normalization, by default None.
+    beta (float): parameter used in the loss function, by default 1.0.
+    mu (optional): the parameters used in the reduced order model, by default None.
+    DEIM_func_c (optional): the nonlinearity used in the reduced order model, by default None.
+    DEIM_func_f (optional): the nonlinearity used in the reduced order model, by default None.
+
+    Methods:
+    init(self, ronn, normalization=None, beta=1., mu=None, DEIM_func_c=None, DEIM_func_f=None): Initializes the attributes.
+    name(self): returns the name of the loss function as a string.
+    _compute_operators(self): computes the reduced order operator matrices.
+
+    Returns:
+    loss_fn (function): the loss function loss_fn(parameters, reduced order coefficients).
     """
+
     def __init__(self, ronn, normalization=None, beta=1., mu=None, DEIM_func_c=None, DEIM_func_f=None, func_c=None):
         super(PINN_Loss, self).__init__(ronn, mu)
         self.operators = None
@@ -265,6 +320,23 @@ class PINN_Loss(RONN_Loss_Base):
 
 
 class PDNN_Loss(RONN_Loss_Base):
+    """
+    This class extends the RONN_Loss_Base class to implement the PDNN loss.
+
+    Parameters:
+    ronn (RONN_Loss_Base): The base RONN loss class.
+    normalization (None, optional): The normalization method to use. If None, it will use the IdentityNormalization method. Defaults to None.
+    mu (None, optional): The mu parameter used in the RONN loss. Defaults to None.
+
+    Methods:
+    name: Returns the string "PDNN".
+    slice_snapshots: Slices the snapshots from the start to the end indices.
+    concatenate_snapshots: Concatenates the snapshots with the normalization applied.
+    _compute_operators: Computes the necessary operators for the PDNN loss.
+    call: Computes the mean squared error between the prediction and the projected snapshots.
+    reinitialize: Reinitializes the PDNN loss with a new mu value.
+    """
+
     def __init__(self, ronn, normalization=None, mu=None):
         super(PDNN_Loss, self).__init__(ronn, mu)
         self.normalization = normalization
@@ -309,6 +381,27 @@ class PDNN_Loss(RONN_Loss_Base):
 
 
 class PRNN_Loss(RONN_Loss_Base):
+    """
+    PRNN_Loss class extends the RONN_Loss_Base class and calculates the loss function for a Physics-Regularized Neural Network (PRNN) model.
+
+    Attributes:
+    omega (float): A scalar weight for the physics-based loss.
+    beta (float): A scalar weight for the PINN loss.
+    pinn_loss (PINN_Loss): An instance of the PINN_Loss class to calculate the PINN loss.
+    pdnn_loss (PDNN_Loss): An instance of the PDNN_Loss class to calculate the physics-based loss.
+    value (dict): A dictionary to store the values of the PINN loss, physics-based loss, and the total loss.
+
+    Methods:
+    name (): Returns a string representing the name of the loss function with the value of omega.
+    set_mu (pdnn_mu, pinn_mu): Sets the values of mu for both the PINN loss and physics-based loss.
+    slice_snapshots (start, end): Slices the snapshots used for the calculation of the physics-based loss.
+    call (kwargs): Calculates and returns the total loss.
+    reinitialize (pdnn_mu, pinn_mu): Re-initializes the loss function with the given values of mu for the PINN loss and physics-based loss.
+
+    Note:
+    The RONN_Loss_Base class and the PINN_Loss and PDNN_Loss classes are required for the PRNN_Loss class to work properly.
+    """
+
     def __init__(self, ronn, normalization=None, omega=1., beta=1., mu=None):
         super(PRNN_Loss, self).__init__(ronn, mu)
         self.omega = omega
@@ -357,6 +450,25 @@ class PRNN_Loss(RONN_Loss_Base):
 
 """ Other losses """
 class Weighted_PDNN_Loss(RONN_Loss_Base):
+    """
+    This class implements the Weighted PDNN Loss. It is a sub-class of RONN Loss Base and is used to calculate the loss value in a Reduced Order Non-Linear network (RONN).
+
+    The class uses normalization and epsilon to calculate the weighted mean of the mean squared differences between the predicted snapshot and the projected snapshots. The epsilon value determines the rate at which the weights decay over time.
+
+    Attributes:
+    normalization (torch.nn.Module): Normalization applied to the projected snapshots.
+    proj_snapshots (torch.Tensor): Projected snapshots after normalization.
+    epsilon (float): Decay rate of the weights.
+
+    Methods:
+    name: Returns the string 'PDNN' as the name of the loss.
+    slice_snapshots: Slice the projected snapshots based on start and end indices.
+    concatenate_snapshots: Concatenate the snapshots with the existing projected snapshots.
+    _compute_operators: Compute the normalization and projected snapshots.
+    call: Calculate the weighted mean of mean squared differences as the loss value.
+    reinitialize: Reinitialize the Weighted PDNN Loss with a new value for mu.
+    """
+
     def __init__(self, ronn, normalization=None, mu=None, epsilon=100.):
         super(Weighted_PDNN_Loss, self).__init__(ronn, mu)
         self.normalization = normalization
