@@ -129,7 +129,6 @@ class PINN_Loss(RONN_Loss_Base):
             self.nonlinearity = None
             self.using_c = False
 
-        
     def name(self):
         return "PINN"
 
