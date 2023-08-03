@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from fenics import *
+from dolfin import *
 from rbnics import *
 from rbnics.utils.io.text_line import TextLine
 from mlnics.Normalization import IdentityNormalization
