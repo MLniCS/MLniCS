@@ -5,7 +5,7 @@ from mlnics.Normalization import IdentityNormalization
 
 from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
 from rbnics.backends.dolfin.parametrized_tensor_factory import ParametrizedTensorFactory
-from rbnics.backends import evaluate, transpose
+from rbnics.backends import evaluate
 
 from dolfin import assemble
 
