@@ -116,6 +116,7 @@ class StandardNormalization(Normalization):
         else:
             return matrix * self.std + self.mean
 
+
 class MinMaxNormalization(Normalization):
     """
     Min-Max normalization, normalizes the matrix to the range [-1, 1] along the specified axis.
