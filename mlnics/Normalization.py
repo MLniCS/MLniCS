@@ -27,6 +27,7 @@ class Normalization:
     def __call__(self, matrix, normalize=True):
         raise NotImplementedError("Calling method of abstract class Normalization")
 
+
 class IdentityNormalization(Normalization):
     """
     Identity normalization, returns the input matrix unchanged.
