@@ -50,6 +50,7 @@ class IdentityNormalization(Normalization):
     def __call__(self, matrix, normalize=True):
         return matrix
 
+
 class MeanNormalization(Normalization):
     """
     Mean normalization, subtracts the mean of the matrix along the specified axis.
