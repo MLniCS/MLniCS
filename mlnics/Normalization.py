@@ -3,6 +3,7 @@ import torch
 """
 Normalization functions to operate on snapshot matrix
 """
+
 class Normalization:
     def __init__(self, input_normalization=False):
         super(Normalization, self).__init__()
