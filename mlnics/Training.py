@@ -202,6 +202,33 @@ class RONNTrainer:
 
 
 class PDNNTrainer(RONNTrainer):
+    """
+    PDNNTrainer
+
+    This class is a child class of the RONNTrainer class. It is used to train a
+    RONN (Radial Overlap Neural Network) for prediction of chemical properties using
+    the PDNN (Predictive Deep Neural Network) training method.
+
+    The class provides a train method which trains the RONN model using the PDNN method.
+
+    Parameters:
+
+    ronn (RONN): The RONN model to be trained.
+    data (Data): The data to be used for training.
+    loss_fn (function): The loss function to be used for training.
+    optimizer (function): The optimizer function to be used for training.
+    lr_scheduler (function, optional): The learning rate scheduler to be used. Defaults to None.
+    input_normalization (function, optional): The input normalization function to be used. Defaults to None.
+    num_epochs (int, optional): The number of training epochs. Defaults to 10000.
+    lr (float, optional): The learning rate. Defaults to 1e-3.
+    print_every (int, optional): The number of epochs after which training progress is printed. Defaults to 100.
+    starting_epoch (int, optional): The starting epoch number. Defaults to 0.
+    use_validation (bool, optional): Whether to use validation set during training. Defaults to True.
+
+    Methods:
+    train(): Trains the RONN model using the PDNN method. Returns the training and validation results.
+    """
+
     def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
@@ -220,7 +247,35 @@ class PDNNTrainer(RONNTrainer):
         train_snap, validation_snap, _, _ = self.data.train_validation_split()
         return self._normalize_and_train(train_snap, validation_snap, None, None)
 
+
 class PINNTrainer(RONNTrainer):
+    """
+    PINNTrainer
+
+    This class is a child class of the RONNTrainer class. It is used to train a
+    RONN (Radial Overlap Neural Network) for prediction of chemical properties using
+    the PINN (Predictive Neural Network) training method.
+
+    The class provides a train method which trains the RONN model using the PINN method.
+
+    Parameters:
+
+    ronn (RONN): The RONN model to be trained.
+    data (Data): The data to be used for training.
+    loss_fn (function): The loss function to be used for training.
+    optimizer (function): The optimizer function to be used for training.
+    lr_scheduler (function, optional): The learning rate scheduler to be used. Defaults to None.
+    input_normalization (function, optional): The input normalization function to be used. Defaults to None.
+    num_epochs (int, optional): The number of training epochs. Defaults to 10000.
+    lr (float, optional): The learning rate. Defaults to 1e-3.
+    print_every (int, optional): The number of epochs after which training progress is printed. Defaults to 100.
+    starting_epoch (int, optional): The starting epoch number. Defaults to 0.
+    use_validation (bool, optional): Whether to use validation set during training. Defaults to True.
+
+    Methods:
+    train(): Trains the RONN model using the PINN method. Returns the training and validation results.
+    """
+
     def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
@@ -242,6 +297,37 @@ class PINNTrainer(RONNTrainer):
 
 
 class PRNNTrainer(RONNTrainer):
+    """
+    Class PRNNTrainer
+
+    A class that extends `RONNTrainer` and trains a `PRNN` model.
+
+    Attributes:
+        ronn (RONN): The RONN model to be trained.
+        data (object): The data to be used for training.
+        loss_fn (function): The loss function to be used for training.
+        optimizer (torch.optim.Optimizer): The optimizer to be used for training.
+        lr_scheduler (torch.optim.lr_scheduler, optional): The learning rate scheduler to be used for training. Defaults to None.
+        input_normalization (callable, optional): The input normalization function to be used for training. Defaults to None.
+        num_epochs (int, optional): The number of epochs for training. Defaults to 10000.
+        lr (float, optional): The learning rate for the optimizer. Defaults to 1e-3.
+        print_every (int, optional): The interval for printing training loss. Defaults to 100.
+        starting_epoch (int, optional): The starting epoch number. Defaults to 0.
+        use_validation (bool, optional): Whether to use validation during training. Defaults to True.
+
+    Methods:
+        train(): Function that gets training and validation sets to pass to _normalize_and_train which then performs the training.
+
+    Function plot_loss
+
+    Plots the loss curve for a given `PRNNTrainer` object.
+
+    Args:
+        trainer (PRNNTrainer): The PRNNTrainer object for which the loss curve is to be plotted.
+        ronn (RONN): The RONN model used in the trainer.
+        separate (bool, optional): Whether to plot train and validation losses on separate plots. Defaults to False.
+    """
+
     def __init__(self, ronn, data, loss_fn, optimizer, lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
                  print_every=100, starting_epoch=0, use_validation=True):
