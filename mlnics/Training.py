@@ -290,7 +290,7 @@ def plot_loss(trainer, ronn, separate=False):
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
             for key in train_losses:
-                ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
+                ax.semilogy(epochs, train_losses[key], linestyle='dashed', label=f"Train Loss ({key})")
 
                 if validation_losses is not None and len(validation_losses) > 0:
                     ax.semilogy(epochs, validation_losses[key], linestyle='solid', label=f"Validation Loss ({key})")
