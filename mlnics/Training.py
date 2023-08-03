@@ -166,6 +166,7 @@ class RONNTrainer:
                 else:
                     raise NotImplementedError(str(type(self.lr_scheduler)) + " not implemented.")
 
+            # loop.set_description(f"Epoch [{e}/{starting_epoch + self.num_epochs}]")
             if e % self.print_every == 0:
                 self.ronn.eval()
                 if validation is not None and self.use_validation:
