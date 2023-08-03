@@ -25,19 +25,12 @@ def compute_reduced_solutions(reduced_problem, mu):
     solutions = []
 
     if "T" in dir(reduced_problem): # time dependent
-        #if torch.numel(mu) > 0:
         for m in mu:
             reduced_problem.set_mu(tuple(np.array(m)))
             solution = reduced_problem.solve()
             for sol_t in solution:
                 sol_t = np.array(sol_t.vector()).reshape(-1, 1)
                 solutions.append(sol_t)
-#         else:
-#             reduced_problem.set_mu(tuple())
-#             solution = reduced_problem.solve()
-#             for sol_t in solution:
-#                 sol_t = np.array(sol_t.vector()).reshape(-1, 1)
-#                 solutions.append(sol_t)
     else:
         for m in mu:
             reduced_problem.set_mu(tuple(np.array(m)))
@@ -243,10 +236,7 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
 
     # get neural network predictions
     if ronn.time_dependent:
-        #if torch.numel(mu) > 0:
         normalized_mu = input_normalization(ronn.augment_parameters_with_time(mu))
-#         else:
-#             normalized_mu = torch.tensor([[ronn.T0 + i*ronn.dt] for i in range(ronn.num_times)])
     else:
         normalized_mu = input_normalization(mu)
 
@@ -371,6 +361,7 @@ def plot_solution(ronn, mu, input_normalization=None, output_normalization=None,
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution.png")
 
+
 def plot_solution_difference(ronn, mu, input_normalization=None, output_normalization=None, t=-1, colorbar=True, component=-1):
     """
     Plot the difference between the solution of the original problem and the reduced neural network solution.
@@ -436,6 +427,5 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
         plt.colorbar(P)
 
     plt.title("Solution difference at $\mu$ = "+str(tuple(round(i, 2) for i in mu)))
-
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
     plt.savefig(folder + "/" + ronn.name() + f"_{mu}_solution_difference.png")
