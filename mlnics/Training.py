@@ -142,6 +142,7 @@ class RONNTrainer:
             loss_fn_validation = None
 
         ############################# Train the model #############################
+
         new_best = False
 
         self.optimizer.zero_grad()
