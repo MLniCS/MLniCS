@@ -15,7 +15,7 @@ class Normalization:
     Methods:
     call (matrix, normalize=True): Raises a NotImplementedError, must be overridden in subclass.
     """
-    
+
     def __init__(self, input_normalization=False):
         super(Normalization, self).__init__()
         self.initialized = False

@@ -1,14 +1,12 @@
 import torch
 import numpy as np
+import copy
 from mlnics.Normalization import IdentityNormalization
 
 from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
-# from rbnics.backends.online import OnlineFunction, OnlineVector
-# from rbnics.backends.common.time_series import TimeSeries
 from rbnics.backends.dolfin.parametrized_tensor_factory import ParametrizedTensorFactory
-from rbnics.backends.dolfin.evaluate import evaluate
+from rbnics.backends import evaluate
 
-# from dolfin import assemble
 
 
 class RONN_Loss_Base:
@@ -94,7 +92,7 @@ class PINN_Loss(RONN_Loss_Base):
     loss_fn (function): the loss function loss_fn(parameters, reduced order coefficients).
     """
 
-    def __init__(self, ronn, normalization=None, beta=1., mu=None, DEIM_func_c=None, DEIM_func_f=None):
+    def __init__(self, ronn, normalization=None, beta=1., mu=None, DEIM_func_c=None, DEIM_func_f=None, func_c=None):
         super(PINN_Loss, self).__init__(ronn, mu)
         self.operators = None
         self.proj_snapshots = None
@@ -122,6 +120,14 @@ class PINN_Loss(RONN_Loss_Base):
         else:
             self.nonlinearity_f = None
             self.using_DEIM_f = False
+           
+        # handle exact nonlinearity
+        if func_c is not None:
+            self.nonlinearity = func_c
+            self.using_c = True
+        else:
+            self.nonlinearity = None
+            self.using_c = False
 
     def name(self):
         return "PINN"
@@ -143,9 +149,9 @@ class PINN_Loss(RONN_Loss_Base):
                     Cj = Cj.reshape(-1)[0].content
                 CT[j] = Cj
 
-            self.operators['c'] = torch.tensor(CT.T).double()
+            self.operators['c'] = torch.tensor(CT.T, dtype=torch.float64)
             selected_rows = sorted([idx[0] for idx in self.ronn.problem.DEIM_approximations['c'][0].interpolation_locations.get_dofs_list()])
-            self.basis_matrix = torch.Tensor(self.ronn.projection.T[selected_rows]).double()
+            self.basis_matrix = torch.tensor(self.ronn.projection.T[selected_rows], dtype=torch.float64)
 
         if self.using_DEIM_f:
             self.using_DEIM_f = True
@@ -161,21 +167,35 @@ class PINN_Loss(RONN_Loss_Base):
                     Cj = Cj.reshape(-1)[0].content
                 CT[j] = Cj
 
-            self.operators['f'] = torch.tensor(CT.T).double()
+            self.operators['f'] = torch.tensor(CT.T, dtype=torch.float64)
+        
+        if self.using_c:
+            self.using_c = True
+            self.operators['c'] = None
+            self.basis_matrix = torch.tensor(self.ronn.projection.T, dtype=torch.float64)
+            self.basis_matrix2 = self.ronn.get_coefficient_matrix()
 
         if self.time_dependent:
             self.T0_idx = torch.arange(0, self.mu.shape[0], self.ronn.num_times)
 
-            self.T0_snapshots = torch.zeros((self.ronn.ro_dim, self.T0_idx.shape[0]))
+            self.T0_snapshots = torch.zeros((self.ronn.ro_dim, self.T0_idx.shape[0]), dtype=torch.float64)
+            
+            sotc = copy.deepcopy(self.ronn.reduced_problem._solution_over_time_cache)
+            sdotc = copy.deepcopy(self.ronn.reduced_problem._solution_dot_over_time_cache)
+            ootc = copy.deepcopy(self.ronn.reduced_problem._output_over_time_cache)
+            
             final_time = self.ronn.reduced_problem.T # store old final time to reset later
             self.ronn.reduced_problem.set_final_time(self.ronn.reduced_problem.t0)
             for i, mu in enumerate(self.mu[self.T0_idx]):
                 self.ronn.reduced_problem.set_mu(tuple(np.array(mu)[1:]))
-                solution = torch.Tensor(np.array(self.ronn.reduced_problem.solve()[0].vector())).view(-1, 1)
+                solution = torch.tensor(np.array(self.ronn.reduced_problem.solve()[0].vector()), dtype=torch.float64).view(-1, 1)
                 self.T0_snapshots[:, [i]] = solution
+            
+            self.ronn.reduced_problem._solution_over_time_cache = sotc
+            self.ronn.reduced_problem._solution_dot_over_time_cache = sdotc
+            self.ronn.reduced_problem._output_over_time_cache = ootc
             self.ronn.reduced_problem.set_final_time(final_time)
-
-
+            
 
         if not self.normalization.initialized:
             self.normalization(self.ronn.get_projected_snapshots())
@@ -217,17 +237,14 @@ class PINN_Loss(RONN_Loss_Base):
                             )
                         ).T[:, :, None]
                 res1 += tmp
-                #print(tmp[0])
-                #mus_here = kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False).detach()
-                #mu0 = float(mus_here[0, 0])
-                #mu1 = float(mus_here[0, 1])
-                #print(mus_here[0])
-                #print(pred[0])
-                #self.ronn.reduced_problem.set_mu((mu0, mu1))
-                #solution = self.ronn.reduced_problem.solve()
-                #print(self.ronn.reduced_problem.operator['c'] * self.ronn.reduced_problem.compute_theta('c'))
-
-                #print()
+            elif self.using_c:
+                tmp = torch.matmul(self.basis_matrix2.T,
+                            self.nonlinearity(
+                                torch.matmul(self.basis_matrix2, pred.T.double()),
+                                kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False)
+                            )
+                        ).T[:, :, None]
+                res1 += tmp
             else:
                 res1 += self.operators['c']
         # these next two could be combined when they're both not None
@@ -257,7 +274,7 @@ class PINN_Loss(RONN_Loss_Base):
 
             # this will contain all derivatives of the output with respect to time
             # with shape number of training points x reduced order dimension x 1
-            jacobian = torch.permute(self._batch_jacobian(self.ronn, normalized_mu, input_normalization), (1, 0, 2))[:, :, [0]]
+            jacobian = torch.permute(self._batch_jacobian(self.ronn, input_normalization(kwargs["normalized_mu"], normalize=False), input_normalization), (1, 0, 2))[:, :, [0]]
 
             if 'm' in self.operators:
                 res1 += torch.matmul(self.operators['m'], jacobian.double())
@@ -265,17 +282,19 @@ class PINN_Loss(RONN_Loss_Base):
             initial_condition_loss = torch.mean((pred[self.T0_idx] - self.T0_snapshots.T)**2)
         else:
             initial_condition_loss = 0
-
+        
         loss1 = torch.mean(torch.sum(res1**2, dim=1)) if type(res1) is not float else res1
         loss2 = torch.mean(torch.sum(res2**2, dim=1)) if type(res2) is not float else res2
-        if self.ronn.problem.dirichlet_bc_are_homogeneous:
-            boundary_condition_loss = 0
-        else:
+        
+        if self.ronn.problem.dirichlet_bc is not None and not self.ronn.problem.dirichlet_bc_are_homogeneous:
             boundary_condition_loss = torch.mean((pred[:, 0] - 1.)**2)
+        else:
+            boundary_condition_loss = 0
+        
+        val = loss1 + loss2 + initial_condition_loss + self.beta*boundary_condition_loss
+        self.value = val.item()
 
-        self.value = loss1 + loss2 + initial_condition_loss + self.beta*boundary_condition_loss
-
-        return self.value
+        return val
 
     def reinitialize(self, mu):
         normalization = self.normalization
@@ -335,9 +354,10 @@ class PDNN_Loss(RONN_Loss_Base):
         if not self.operators_initialized:
             self._compute_operators()
 
-        self.value = torch.mean((pred.T - self.proj_snapshots)**2)
+        val = torch.mean((pred.T - self.proj_snapshots)**2)
+        self.value = val.item()
 
-        return self.value
+        return val
 
     def reinitialize(self, mu):
         normalization = self.normalization
@@ -389,12 +409,17 @@ class PRNN_Loss(RONN_Loss_Base):
 
     def __call__(self, **kwargs):
         self.operators_initialized = True
-        self.value = dict()
-        self.value["pdnn_loss"] = self.pdnn_loss(**kwargs)
-        self.value["pinn_loss"] = self.pinn_loss(**kwargs)
-        self.value["loss"] = self.value["pinn_loss"] + self.omega * self.value["pdnn_loss"]
 
-        return self.value["loss"]
+        pdnn_val = self.pdnn_loss(**kwargs)
+        pinn_val = self.pinn_loss(**kwargs)
+        val = pinn_val + self.omega * pdnn_val
+
+        self.value = dict()
+        self.value["pdnn_loss"] = pdnn_val.item()
+        self.value["pinn_loss"] = pinn_val.item()
+        self.value["loss"] = val.item()
+
+        return val
 
     def reinitialize(self, pdnn_mu, pinn_mu):
         normalization = self.pdnn_loss.normalization
@@ -464,9 +489,10 @@ class Weighted_PDNN_Loss(RONN_Loss_Base):
         weights = torch.exp(-self.epsilon * torch.cumsum(separate_losses, dim=0))
         separate_losses[1:] *= weights[:-1]
 
-        self.value = torch.mean(separate_losses)
+        val = torch.mean(separate_losses)
+        self.value = val.item()
 
-        return self.value
+        return val
 
     def reinitialize(self, mu):
         normalization = self.normalization

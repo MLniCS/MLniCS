@@ -159,7 +159,12 @@ class RONNTrainer:
             loss.backward()
             self.optimizer.step()
             if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
+                if type(self.lr_scheduler) is torch.optim.lr_scheduler.ReduceLROnPlateau:
+                    self.lr_scheduler.step(loss)
+                elif type(self.lr_scheduler) is torch.optim.lr_scheduler.ExponentialLR:
+                    self.lr_scheduler.step()
+                else:
+                    raise NotImplementedError(str(type(self.lr_scheduler)) + " not implemented.")
 
             # loop.set_description(f"Epoch [{e}/{starting_epoch + self.num_epochs}]")
             if e % self.print_every == 0:
@@ -351,20 +356,20 @@ def plot_loss(trainer, ronn, separate=False):
     if type(train_losses[0]) is not dict:
         train_losses_ = []
         for i, value in enumerate(train_losses):
-            train_losses_.append(value.item())
+            train_losses_.append(value)
         train_losses = np.array(train_losses_)
 
         if validation_losses is not None:
             validation_losses_ = []
             for i, value in enumerate(validation_losses):
-                validation_losses_.append(value.item())
+                validation_losses_.append(value)
             validation_losses = np.array(validation_losses_)
     else:
         train_losses_ = []
         for i, value in enumerate(train_losses):
             train_losses_.append(dict())
             for key in value:
-                train_losses_[-1][key] = value[key].item()
+                train_losses_[-1][key] = value[key]
         train_dict = dict()
         for key in train_losses[0]:
             train_dict[key] = np.array(list(map(lambda d: d[key], train_losses_)))
@@ -376,7 +381,7 @@ def plot_loss(trainer, ronn, separate=False):
             for i, value in enumerate(validation_losses):
                 validation_losses_.append(dict())
                 for key in value:
-                    validation_losses_[-1][key] = value[key].item()
+                    validation_losses_[-1][key] = value[key]
             validation_dict = dict()
             if len(validation_losses) > 0:
                 for key in validation_losses[0]:
