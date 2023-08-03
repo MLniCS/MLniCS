@@ -393,7 +393,7 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
     reduced_problem = ronn.reduced_problem
     V = problem.V
 
-    mu_nn = torch.tensor(mu)
+    mu_nn = torch.tensor(mu).to(dtype=torch.float32)
     nn_solution = ronn.solve(mu_nn, input_normalization, output_normalization)
     problem.set_mu(mu)
     problem.solve()
