@@ -47,6 +47,7 @@ class RONNTrainer:
     train (): Raises NotImplementedError as the base class does not implement the training method.
     _normalize_and_train (): Performs the normalization of the input data and trains the RONN using the specified loss function and optimizer.
     """
+
     def __init__(self, ronn, data, loss_fn, optimizer,
                  lr_scheduler=None,
                  input_normalization=None, num_epochs=10000, lr=1e-3,
