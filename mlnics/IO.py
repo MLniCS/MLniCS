@@ -16,7 +16,6 @@ def save_state(epoch, ronn, data, optimizer, train_loss_fn, val_loss_fn, epochs,
     """
     Save the reduced order neural network state which includes
         - neural network weights
-        -
         ...
 
     Creates several different files including
