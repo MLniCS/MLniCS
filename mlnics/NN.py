@@ -7,7 +7,6 @@ from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
 from rbnics.backends.online import OnlineFunction, OnlineVector
 from rbnics.backends.common.time_series import TimeSeries
 from rbnics.backends.dolfin.parametrized_tensor_factory import ParametrizedTensorFactory
-#from rbnics.backends.dolfin.evaluate import evaluate
 from rbnics.backends import evaluate, transpose
 from rbnics.utils.io.online_size_dict import OnlineSizeDict
 from mlnics.Normalization import IdentityNormalization
