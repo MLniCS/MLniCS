@@ -293,7 +293,7 @@ def plot_loss(trainer, ronn, separate=False):
                 ax.semilogy(epochs, train_losses[key], label=f"Train Loss ({key})")
 
                 if validation_losses is not None and len(validation_losses) > 0:
-                    ax.semilogy(epochs, validation_losses[key], label=f"Validation Loss ({key})")
+                    ax.semilogy(epochs, validation_losses[key], linestyle='solid', label=f"Validation Loss ({key})")
 
         ax.set_title(ronn.name())
         ax.set_xlabel("Epoch")
