@@ -80,6 +80,7 @@ class MeanNormalization(Normalization):
         else:
             return matrix + self.mean
 
+
 class StandardNormalization(Normalization):
     """
     Standard normalization, subtracts the mean and divides by the standard deviation of the matrix along the specified axis.
