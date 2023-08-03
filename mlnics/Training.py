@@ -295,7 +295,6 @@ class PINNTrainer(RONNTrainer):
         return self._normalize_and_train(None, None, train_no_snap, validation_no_snap)
 
 
-
 class PRNNTrainer(RONNTrainer):
     """
     Class PRNNTrainer
