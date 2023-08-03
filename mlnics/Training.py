@@ -182,7 +182,8 @@ class RONNTrainer:
                         new_best = False
 
                     self.validation_losses.append(loss_fn_validation.value)
-                    print(e, loss.item(), f"\tLoss(validation) = {validation_loss.item()}")
+                    # print(e, f"\tLoss(training) = {loss.item()}", f"\tLoss(validation) = {validation_loss.item()}")
+                    loop.set_postfix({"Loss(training)": loss.item()}, {"Loss(validation)": validation_loss.item()})
                 else:
                     print(e, loss.item())
 
