@@ -197,7 +197,6 @@ class PINN_Loss(RONN_Loss_Base):
             self.ronn.reduced_problem.set_final_time(final_time)
             
 
-
         if not self.normalization.initialized:
             self.normalization(self.ronn.get_projected_snapshots())
 
@@ -206,7 +205,6 @@ class PINN_Loss(RONN_Loss_Base):
         self.operators_initialized = False
 
     def _batch_jacobian(self, f, x, input_normalization):
-        #f_sum = lambda y: torch.sum(torch.tanh(y.T[[0]].T) * self.normalization(f(input_normalization(y)).T, normalize=False).T, axis=0)
         f_sum = lambda y: torch.sum(self.normalization(f(input_normalization(y)).T, normalize=False).T, axis=0)
         return torch.autograd.functional.jacobian(f_sum, x, create_graph=True)
 
@@ -216,10 +214,6 @@ class PINN_Loss(RONN_Loss_Base):
             self._compute_operators()
 
         pred = self.normalization(pred.T, normalize=False).T
-        #""" TIME LIFTING """
-        #if self.time_dependent:
-        #    times = kwargs["input_normalization"](kwargs["normalized_mu"], normalize=False).T[[0]].T
-        #    pred = pred * torch.tanh(times)
 
         ##### 1st equation in system #####
         res1 = 0.0
@@ -289,13 +283,7 @@ class PINN_Loss(RONN_Loss_Base):
         else:
             initial_condition_loss = 0
         
-        
-        #res1_sum = torch.sum(res1**2, dim=1)
-        #weights = torch.zeros((res1.size(0), 1), dtype=torch.float64)#torch.exp(-100. * torch.cumsum(res1_sum, dim=0))
-        #weights[1] = 1
-        #weights = 1/(0.0001+torch.tensor(np.arange(0, 1.01, 0.02).reshape(-1,1)**2))#torch.exp(-1000*torch.cumsum(res1_sum, dim=0)/torch.sum(res1_sum))
         loss1 = torch.mean(torch.sum(res1**2, dim=1)) if type(res1) is not float else res1
-        #loss1 = torch.mean(res1_sum*weights) if type(res1) is not float else res1
         loss2 = torch.mean(torch.sum(res2**2, dim=1)) if type(res2) is not float else res2
         
         if self.ronn.problem.dirichlet_bc is not None and not self.ronn.problem.dirichlet_bc_are_homogeneous:
