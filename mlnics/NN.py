@@ -244,54 +244,6 @@ class RONN(nn.Module):
                 A = torch.tensor(A, dtype=torch.float64)
 
                 operator_dict[term] = A
-            
-#             elif term in ['c'] and self.time_dependent:
-#                 assert mu.shape[0] % self.num_times == 0
-
-#                 C = np.zeros((mu.shape[0], self.ro_dim))
-#                 num_operators = len(self.reduced_problem.operator[term])
-#                 for n in range(self.num_times):
-#                     operators = np.zeros((num_operators, self.ro_dim))
-#                     self.reduced_problem.set_time(n*self.problem.dt)
-#                     for j, Cj in enumerate(self.reduced_problem.operator[term]):
-#                         if type(Cj) is ParametrizedTensorFactory:
-#                             Cj = np.array(evaluate(Cj))
-#                         elif type(Cj) is DelayedTranspose:
-#                             Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
-#                         else:
-#                             Cj = Cj.reshape(-1)[0].content
-#                         operators[j] = Cj
-
-#                     for i in range(mu.shape[0]//self.num_times):
-#                         m = mu[n + i*self.num_times]
-#                         self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
-#                         thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1)
-#                         C[n + i*self.num_times] = np.sum(thetas * operators, axis=0)
-#                         print(m, C[n + i*self.num_times], "\n")
-
-#                 C = torch.tensor(C).double()[:, :, None]
-#                 operator_dict[term] = C
-
-#             elif term in ['c']:
-#                 C = np.zeros((mu.shape[0], self.ro_dim))
-#                 num_operators = len(self.reduced_problem.operator[term])
-#                 operators = np.zeros((num_operators, self.ro_dim))
-#                 for j, Cj in enumerate(self.reduced_problem.operator[term]):
-#                     if type(Cj) is ParametrizedTensorFactory:
-#                         Cj = np.array(evaluate(Cj))
-#                     elif type(Cj) is DelayedTranspose:
-#                         Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
-#                     else:
-#                         Cj = Cj.reshape(-1)[0].content
-#                     operators[j] = Cj
-
-#                 for i, m in enumerate(mu):
-#                     self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
-#                     thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1)
-#                     C[i] = np.sum(thetas * operators, axis=0)
-#                 C = torch.tensor(C).double()[:, :, None]
-
-#                 operator_dict[term] = C
                 
             elif term in ['f', 'g']:
                 C = np.zeros((mu.shape[0], self.ro_dim))
