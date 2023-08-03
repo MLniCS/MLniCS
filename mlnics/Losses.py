@@ -485,9 +485,6 @@ class Weighted_PDNN_Loss(RONN_Loss_Base):
         if not self.operators_initialized:
             self._compute_operators()
 
-
-
-
         separate_losses = torch.mean((pred.T - self.proj_snapshots)**2, dim=0)
         weights = torch.exp(-self.epsilon * torch.cumsum(separate_losses, dim=0))
         separate_losses[1:] *= weights[:-1]
