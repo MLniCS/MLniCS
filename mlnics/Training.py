@@ -285,7 +285,7 @@ def plot_loss(trainer, ronn, separate=False):
             if validation_losses is not None and np.size(validation_losses) > 0:
                 fig = plt.figure()
                 ax = fig.add_subplot(1, 1, 1)
-                ax.semilogy(epochs, validation_losses, label="Validation Loss")
+                ax.semilogy(epochs, validation_losses, linestyle='solid', label="Validation Loss")
         else:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
