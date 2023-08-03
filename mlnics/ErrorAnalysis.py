@@ -21,6 +21,7 @@ def compute_reduced_solutions(reduced_problem, mu):
     Returns:
         numpy.ndarray: A numpy array containing the solutions.
     """
+    
     solutions = []
 
     if "T" in dir(reduced_problem): # time dependent
