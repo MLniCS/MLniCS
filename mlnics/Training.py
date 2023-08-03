@@ -185,7 +185,8 @@ class RONNTrainer:
                     # print(e, f"\tLoss(training) = {loss.item()}", f"\tLoss(validation) = {validation_loss.item()}")
                     loop.set_postfix({"Loss(training)": loss.item()}, {"Loss(validation)": validation_loss.item()})
                 else:
-                    print(e, loss.item())
+                    # print(e, f"\tLoss(training) = {loss.item()}")
+                    loop.set_postfix({"Loss(training)": loss.item()})
 
                 self.train_losses.append(self.loss_fn.value)
                 self.epochs.append(e)
