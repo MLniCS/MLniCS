@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from fenics import *
+from dolfin import *
 from rbnics import *
 from rbnics.backends.basic.wrapping.delayed_transpose import DelayedTranspose
 from rbnics.backends.online import OnlineFunction, OnlineVector
