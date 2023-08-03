@@ -16,6 +16,8 @@ def save_state(epoch, ronn, data, optimizer, train_loss_fn, val_loss_fn, epochs,
     """
     Save the reduced order neural network state which includes
         - neural network weights
+        -
+        ...
 
     Creates several different files including
         - checkpoint.pt (for neural network weights, optimizer, etc.)
@@ -84,24 +86,8 @@ def save_state(epoch, ronn, data, optimizer, train_loss_fn, val_loss_fn, epochs,
         pickle.dump(metadata, f)
 
 
+
 def load_state(ronn, data, trainer, optimizer):
-    """
-    Load the state of a PyTorch model, optimizer, and trainer.
-
-    This function loads the state of a PyTorch model, optimizer, and trainer
-    from a checkpoint stored in the file system. The state includes the model's
-    weights, optimizer's state, and trainer's epochs, train losses, and validation losses.
-
-    Parameters:
-    ronn (nn.Module): A PyTorch model to be loaded.
-    data (object): A data object holding metadata information and data tensors.
-    trainer (object): A trainer object holding information about the training process.
-    optimizer (torch.optim): A PyTorch optimizer to be loaded.
-
-    Returns:
-    int: The last epoch the model was trained for.
-    """
-
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
 
     # load the data attributes
@@ -137,15 +123,7 @@ def load_state(ronn, data, trainer, optimizer):
     ronn.train()
     return epoch
 
-
 def read_losses(ronn):
-    """
-    Read loss values from a given RONN model's metadata file.
-
-    :param ronn: The RONN object to read the losses from.
-    :return: A tuple of (epochs, train_losses, validation_losses), where epochs is the number of training epochs, train_losses is a list of training loss values, and validation_losses is a list of validation loss values if available.
-    """
-
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
 
     train_losses, validation_losses = None, None
@@ -159,23 +137,7 @@ def read_losses(ronn):
 
     return epochs, train_losses, validation_losses
 
-
 def initialize_parameters(ronn, data, trainer, optimizer):
-    """
-    This function initializes the parameters for a RONN model. It checks if the parameters for the model have been saved previously and if so, it loads them. Otherwise, it splits the data into training and validation sets and returns the starting epoch as 0.
-
-    Parameters:
-
-    ronn: a RONN model object
-    data: a data object
-    trainer: a trainer object
-    optimizer: an optimizer object
-    Returns:
-
-    A tuple of two values:
-    loaded_previous_parameters (bool): indicates whether the previous parameters have been loaded or not
-    starting_epoch (int): the starting epoch for the training process. 0 if no previous parameters have been loaded.
-    """
     loaded_previous_parameters = False
 
     if os.path.exists(ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()):

@@ -4,61 +4,6 @@ from rbnics.sampling.parameter_space_subset import ParameterSpaceSubset
 
 
 class RONNDataLoader:
-    """
-    RONNDataLoader
-
-    The RONNDataLoader class is responsible for loading and dividing the training and validation datasets for the RONN algorithm.
-
-    Parameters
-
-    ronn: RONN object, required
-    The RONN object that holds the training data.
-    validation_proportion: float, optional (default=0.2)
-    The proportion of data to be used as validation data.
-    num_without_snapshots: int, optional (default=0)
-    The number of samples from the parameter space without corresponding snapshots to be included in the training/validation data.
-    sampling: str, optional (default=None)
-    The sampling method to be used for generating samples from the parameter space without corresponding snapshots.
-    Attributes
-
-    initialized: bool
-    A flag indicating whether the training and validation sets have been initialized.
-    train_data: torch.tensor
-    The training data with corresponding snapshots.
-    val_data: torch.tensor
-    The validation data with corresponding snapshots.
-    train_data_no_snaps: torch.tensor
-    The training data without corresponding snapshots.
-    val_data_no_snaps: torch.tensor
-    The validation data without corresponding snapshots.
-    Methods
-
-    train_validation_split():
-    Initializes the training and validation datasets, based on the specified parameters.
-    get_training_data():
-    Returns the training data.
-    get_validation_data():
-    Returns the validation data.
-    get_validation_snapshot_index():
-    Returns the validation snapshot index.
-    get_train_snapshot_index():
-    Returns the training snapshot index.
-    get_new_parameters
-
-    The get_new_parameters function returns a torch.tensor of newly generated parameters from the RONN object.
-
-    Parameters
-
-    ronn: RONN object, required
-    The RONN object that holds the training data.
-    n: int, optional (default=100)
-    The number of new parameters to be generated.
-    Returns
-
-    torch.tensor
-    The newly generated parameters.
-    """
-
     def __init__(self, ronn, validation_proportion=0.2, num_without_snapshots=0, sampling=None):
         self.ronn = ronn
 
