@@ -253,7 +253,6 @@ class RONN(nn.Module):
                     if type(Cj) is ParametrizedTensorFactory:
                         Cj = np.array(evaluate(Cj))
                     elif type(Cj) is DelayedTranspose:
-                        #Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
                         Cj = np.array(transpose(Cj._args[0]) * evaluate(Cj._args[1]))
                     else:
                         Cj = Cj.reshape(-1)[0].content
