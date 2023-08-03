@@ -430,8 +430,6 @@ class PRNN_Loss(RONN_Loss_Base):
         return loss
 
 
-
-
 """ Other losses """
 class Weighted_PDNN_Loss(RONN_Loss_Base):
     """
