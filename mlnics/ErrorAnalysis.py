@@ -295,7 +295,7 @@ def error_analysis_by_network(nets, mu, input_normalizations, output_normalizati
         output_normalization = output_normalizations[net_name]
         if i == 0:
             if relative:
-                print(f"Mean Relative Error for {net.ro_dim} Basis Functions")
+                print(f"Mean Relative Error for N = {net.ro_dim} Basis Functions")
             else:
                 print(f"Mean Error for {net.ro_dim} Basis Functions")
             print("Network\t\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
