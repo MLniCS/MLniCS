@@ -145,7 +145,9 @@ class RONNTrainer:
         new_best = False
 
         self.optimizer.zero_grad()
-        for e in range(starting_epoch, starting_epoch + self.num_epochs):
+        # loop = range(starting_epoch, starting_epoch + self.num_epochs)
+        loop = tqdm(range(starting_epoch, starting_epoch + self.num_epochs))
+        for e in loop:
             coeff_pred = self.ronn(train_normalized)
             loss = self.loss_fn(prediction_snap=coeff_pred[:num_train_snaps],
                                 prediction_no_snap=coeff_pred[num_train_snaps:],
