@@ -261,7 +261,7 @@ def error_analysis_fixed_net(ronn, mu, input_normalization, output_normalization
     ro_hf_error = compute_error(ronn, (coeff @ ro_solutions.T).T, hf_solutions, euclidean=euclidean, relative=relative)
 
     if print_results:
-        print(TextLine("N = "+str(ronn.ro_dim), fill="#"))
+        print(TextLine(ronn.loss_type+" N = "+str(ronn.ro_dim), fill="#"))
         print(f"ERROR\tNN-HF\t\t\tNN-RO\t\t\tRO-HF")
         print(f"min\t{np.min(nn_hf_error)}\t{np.min(nn_ro_error)}\t{np.min(ro_hf_error)}")
         print(f"mean\t{np.mean(nn_hf_error)}\t{np.mean(nn_ro_error)}\t{np.mean(ro_hf_error)}")
