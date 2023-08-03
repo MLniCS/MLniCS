@@ -68,6 +68,7 @@ class RONN_Loss_Base:
     def __call__(self, pred, **kwargs):
         raise NotImplementedError("Calling abstract method of class RONN_Loss")
 
+
 class PINN_Loss(RONN_Loss_Base):
     """
     Class PINN_Loss
