@@ -140,7 +140,7 @@ class RONN(nn.Module):
         self.proj_snapshots = None
 
     def name(self):
-        return self.loss_type + "_" + str(self.num_hidden) + "_" + str(self.num_neurons)
+        return self.loss_type + "_" + str(self.num_hidden) + "_hidden_layers_" + str(self.num_neurons) + "_neurons"
 
     def forward(self, mu):
         """
