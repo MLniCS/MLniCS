@@ -130,9 +130,9 @@ class RONN(nn.Module):
         self.layers = nn.ModuleList()
         last_n = self.num_params
         for i in range(n_hidden):
-            self.layers.append(nn.Linear(last_n, n_neurons))
+            self.layers.append(nn.Linear(last_n, n_neurons, dtype=torch.float64))
             last_n = n_neurons
-        self.layers.append(nn.Linear(last_n, self.ro_dim))
+        self.layers.append(nn.Linear(last_n, self.ro_dim, dtype=torch.float64))
 
         self.activation = activation
 
@@ -156,7 +156,7 @@ class RONN(nn.Module):
     def augment_parameters_with_time(self, mu):
         if not self.time_dependent:
             return mu
-        new_mu = torch.zeros((mu.shape[0]*self.num_times, self.num_params))
+        new_mu = torch.zeros((mu.shape[0]*self.num_times, self.num_params), dtype=torch.float64)
         for i in range(mu.shape[0]):
             for j in range(self.num_times):
                 new_mu[i*self.num_times+j, 1:] = mu[i]
@@ -199,7 +199,7 @@ class RONN(nn.Module):
         return coeff_matrix
 
     def get_inner_product_matrix(self):
-        inner_product = torch.tensor(np.array(self.reduced_problem._combine_all_inner_products()))
+        inner_product = torch.tensor(np.array(self.reduced_problem._combine_all_inner_products()), dtype=torch.float64)
         return inner_product
 
     def get_reduced_operator_matrices(self, mu=None):
@@ -219,14 +219,14 @@ class RONN(nn.Module):
         for term in self.reduced_problem.terms:
             # matrix terms
             if term in ['a', 'm', 'b', 'bt']:
-                A = np.zeros((mu.shape[0], self.ro_dim, self.ro_dim))
+                A = np.zeros((mu.shape[0], self.ro_dim, self.ro_dim), dtype=np.float64)
                 num_operators = len(self.reduced_problem.operator[term])
-                operators = np.zeros((num_operators, self.ro_dim, self.ro_dim))
+                operators = np.zeros((num_operators, self.ro_dim, self.ro_dim), dtype=np.float64)
                 for j, Aj in enumerate(self.reduced_problem.operator[term]):
                     if type(Aj) is ParametrizedTensorFactory:
-                        Aj = np.array(evaluate(Aj).array())
+                        Aj = np.array(evaluate(Aj).array(), dtype=np.float64)
                     elif type(Aj) is DelayedTranspose:
-                        Aj = np.array([v.vector() for v in Aj._args[0]]) @ np.array(evaluate(Aj._args[1]).array()) @ np.array([v.vector() for v in Aj._args[2]]).T
+                        Aj = np.array([v.vector() for v in Aj._args[0]], dtype=np.float64) @ np.array(evaluate(Aj._args[1]).array(), dtype=np.float64) @ np.array([v.vector() for v in Aj._args[2]], dtype=np.float64).T
                     else:
                         Aj = Aj.reshape(-1)[0].content
                     operators[j] = Aj
@@ -237,7 +237,7 @@ class RONN(nn.Module):
                     self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
                     if self.time_dependent:
                         self.reduced_problem.set_time(np.array(m)[0])
-                    thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1, 1)
+                    thetas = np.array(self.reduced_problem.compute_theta(term), dtype=np.float64).reshape(-1, 1, 1)
                     A[i] = np.sum(thetas * operators, axis=0)
                 if self.time_dependent:
                     self.reduced_problem.set_time(rp_time)
@@ -246,14 +246,14 @@ class RONN(nn.Module):
                 operator_dict[term] = A
                 
             elif term in ['f', 'g']:
-                C = np.zeros((mu.shape[0], self.ro_dim))
+                C = np.zeros((mu.shape[0], self.ro_dim), dtype=np.float64)
                 num_operators = len(self.reduced_problem.operator[term])
-                operators = np.zeros((num_operators, self.ro_dim))
+                operators = np.zeros((num_operators, self.ro_dim), dtype=np.float64)
                 for j, Cj in enumerate(self.reduced_problem.operator[term]):
                     if type(Cj) is ParametrizedTensorFactory:
-                        Cj = np.array(evaluate(Cj))
+                        Cj = np.array(evaluate(Cj), dtype=np.float64)
                     elif type(Cj) is DelayedTranspose:
-                        Cj = np.array(transpose(Cj._args[0]) * evaluate(Cj._args[1]))
+                        Cj = np.array(transpose(Cj._args[0]) * evaluate(Cj._args[1]), dtype=np.float64)
                     else:
                         Cj = Cj.reshape(-1)[0].content
                     operators[j] = Cj
@@ -264,7 +264,7 @@ class RONN(nn.Module):
                     self.reduced_problem.set_mu(tuple(np.array(m)[self.time_dependent:]))
                     if self.time_dependent:
                         self.reduced_problem.set_time(np.array(m)[0])
-                    thetas = np.array(self.reduced_problem.compute_theta(term)).reshape(-1, 1)
+                    thetas = np.array(self.reduced_problem.compute_theta(term), dtype=np.float64).reshape(-1, 1)
                     C[i] = np.sum(thetas * operators, axis=0)
                 if self.time_dependent:
                     self.reduced_problem.set_time(rp_time)

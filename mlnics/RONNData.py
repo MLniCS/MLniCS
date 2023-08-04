@@ -106,13 +106,13 @@ class RONNDataLoader:
 
             parameter_space_subset = ParameterSpaceSubset()
             parameter_space_subset.generate(ronn.problem.mu_range, num_val_without_snaps, self.sampling)
-            self.val_data_no_snaps = ronn.augment_parameters_with_time(torch.tensor(parameter_space_subset))
+            self.val_data_no_snaps = ronn.augment_parameters_with_time(torch.tensor(parameter_space_subset, dtype=torch.float64))
             if self.val_data_no_snaps.shape[0] == 0:
                 self.val_data_no_snaps = None
 
             parameter_space_subset = ParameterSpaceSubset()
             parameter_space_subset.generate(ronn.problem.mu_range, num_train_without_snaps, self.sampling)
-            self.train_data_no_snaps = ronn.augment_parameters_with_time(torch.tensor(parameter_space_subset))
+            self.train_data_no_snaps = ronn.augment_parameters_with_time(torch.tensor(parameter_space_subset, dtype=torch.float64))
             if self.train_data_no_snaps.shape[0] == 0:
                 self.train_data_no_snaps = None
 
