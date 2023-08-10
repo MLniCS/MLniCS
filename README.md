@@ -1,7 +1,5 @@
 # MLniCS
 
-[![linting: pylint](https://img.shields.io/badge/linting-pylint-yellowgreen)](https://github.com/pylint-dev/pylint)
-
 MLniCS is a library for building physics-informed neural networks (PINNs), physics-reinforced neural networks (PRNNs), and projection-driven neural networks (PDNNs) in the context of parameterized reduced order models. For more about these methodologies, see the paper [Physics-informed machine learning for reduced-order modeling of nonlinear problems](https://www.sciencedirect.com/science/article/pii/S0021999121005611).
 
 ## Requirements
