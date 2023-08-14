@@ -106,13 +106,17 @@ class PINN_Loss(RONN_Loss_Base):
         # if time dependent, we need the neural net to compute time derivative
         self.time_dependent = ronn.time_dependent
 
-        # if DEIM being used, handle separately
+        # setup for nonlinearity
+        self.using_DEIM_c = False
+        self.using_c = False
         if DEIM_func_c is not None:
             self.nonlinearity = DEIM_func_c
             self.using_DEIM_c = True
+        elif func_c is not None:
+            self.nonlinearity = func_c
+            self.using_c = True
         else:
             self.nonlinearity = None
-            self.using_DEIM_c = False
 
         if DEIM_func_f is not None:
             self.nonlinearity_f = DEIM_func_f
@@ -120,14 +124,6 @@ class PINN_Loss(RONN_Loss_Base):
         else:
             self.nonlinearity_f = None
             self.using_DEIM_f = False
-           
-        # handle exact nonlinearity
-        if func_c is not None:
-            self.nonlinearity = func_c
-            self.using_c = True
-        else:
-            self.nonlinearity = None
-            self.using_c = False
 
     def name(self):
         return "PINN"
@@ -136,22 +132,19 @@ class PINN_Loss(RONN_Loss_Base):
         self.operators_initialized = True
         self.operators = self.ronn.get_reduced_operator_matrices(self.mu)
         if self.using_DEIM_c:
-            self.using_DEIM_c = True
             # make the operator for DEIM
-            num_cols = len(self.ronn.reduced_problem.operator['c'])
-            CT = np.zeros((num_cols, self.ronn.ro_dim))
-            for j, Cj in enumerate(self.ronn.reduced_problem.operator['c']):
-                if type(Cj) is ParametrizedTensorFactory:
-                    Cj = np.array(evaluate(Cj))
-                elif type(Cj) is DelayedTranspose:
-                    Cj = (np.array([v.vector() for v in Cj._args[0]]) @ np.array(evaluate(Cj._args[1])).reshape(-1, 1)).reshape(-1)
-                else:
-                    Cj = Cj.reshape(-1)[0].content
-                CT[j] = Cj
+            selected_indices = sorted([idx[0] for idx in self.ronn.problem.DEIM_approximations['c'][0].interpolation_locations.get_dofs_list()])
+            U = np.array(self.ronn.problem._assemble_operator_DEIM('c')).T
+            P = []
+            for idx in selected_indices:
+                new_column = np.zeros(U.shape[0])
+                new_column[idx] = 1
+                P.append(new_column)
+            P = np.array(P).T
+            PtUinv = np.linalg.inv(P.T @ U)
 
-            self.operators['c'] = torch.tensor(CT.T, dtype=torch.float64)
-            selected_rows = sorted([idx[0] for idx in self.ronn.problem.DEIM_approximations['c'][0].interpolation_locations.get_dofs_list()])
-            self.basis_matrix = torch.tensor(self.ronn.projection.T[selected_rows], dtype=torch.float64)
+            self.operators['c'] = torch.tensor(self.ronn.projection @ U @ PtUinv, dtype=torch.float64)
+            self.basis_matrix = torch.tensor(self.ronn.projection.T[selected_indices], dtype=torch.float64)
 
         if self.using_DEIM_f:
             self.using_DEIM_f = True
@@ -170,7 +163,6 @@ class PINN_Loss(RONN_Loss_Base):
             self.operators['f'] = torch.tensor(CT.T, dtype=torch.float64)
         
         if self.using_c:
-            self.using_c = True
             self.operators['c'] = None
             self.basis_matrix = torch.tensor(self.ronn.projection.T, dtype=torch.float64)
             self.basis_matrix2 = self.ronn.get_coefficient_matrix()
@@ -246,7 +238,7 @@ class PINN_Loss(RONN_Loss_Base):
                         ).T[:, :, None]
                 res1 += tmp
             else:
-                res1 += self.operators['c']
+                raise ValueError("Nonlinearities must be provided by user at initialization of loss.")
         # these next two could be combined when they're both not None
         if 'a' in self.operators:
             res1 += torch.matmul(self.operators['a'], pred[:, :, None].double())
