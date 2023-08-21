@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from dolfin import *
 from rbnics import *
 from rbnics.utils.io.text_line import TextLine
@@ -355,7 +356,12 @@ def plot_solution(ronn, mu, input_normalization=None, output_normalization=None,
             P = plot(problem._solution_over_time[t])
 
     if colorbar:
-        plt.colorbar(P)
+        cbar = plt.colorbar(P)
+        tick_locator = MaxNLocator(nbins=5)
+        cbar.locator = tick_locator
+        cbar.formatter.set_powerlimits((0, 0))
+        cbar.update_ticks()
+        plt.tight_layout()
 
     plt.title("Solution field at $\mu$ = "+str(tuple(round(i, 2) for i in mu)))
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
@@ -424,7 +430,12 @@ def plot_solution_difference(ronn, mu, input_normalization=None, output_normaliz
             )
 
     if colorbar:
-        plt.colorbar(P)
+        cbar = plt.colorbar(P)
+        tick_locator = MaxNLocator(nbins=5)
+        cbar.locator = tick_locator
+        cbar.formatter.set_powerlimits((0, 0))
+        cbar.update_ticks()
+        plt.tight_layout()
 
     plt.title("Solution difference at $\mu$ = "+str(tuple(round(i, 2) for i in mu)))
     folder = ronn.reduction_method.folder_prefix + NN_FOLDER + "/" + ronn.name()
